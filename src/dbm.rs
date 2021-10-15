@@ -18,8 +18,49 @@ struct DBM<T, N> {
         LessThanEqual,
     }
 
-    impl<T, N> DBM<T, N> {
-        fn new(clocks: Vec<N>) { //Intentionally doesn't take a reference, as we would like the names to be owned by the data structure
+    impl<T: std::default::Default, //For all T's that implement Default
+         N: std::cmp::Eq + std::default::Default, //all N's that implement Eq and Default
+         > DBM<T, N> {
+
+        fn new(mut clocks: Vec<N>) -> DBM<T, N> { //Intentionally doesn't take a reference, as we would like the names to be owned by the data structure
+            let bitvector = Bitvector::init_with_length(clocks.len() as u32);
+            clocks.insert(0, Default::default());
+            let matrix_size = clocks.len() * clocks.len();
+            let mut matrix: Vec<T>  = Vec::new();
+            matrix.resize_with(matrix_size, Default::default);
+            Self{
+                matrix: matrix,
+                clock_names: clocks,
+                bitvec: bitvector,
+            }
+        }
+
+        fn get_dimsize(&self) -> usize { //only need one function, as the matrices are always quadratic
+           self.clock_names.len()
+        }
+
+        fn get_element(&self, row: usize, col: usize) -> Option<&T>{
+            match self.get_dimsize() {
+                0 => None, //If dimsize is 0 (ie. DBM is empty), return none
+                dimsize | dimsize if row > dimsize-1 => None, //dimsize is indexed by 1, whereas rows and columns are 0-indexed
+                dimsize | dimsize if col > dimsize-1 => None, //and we don't want users to break our dimensions
+                dimsize => self.matrix.get((row * dimsize + col) as usize) //offset by row, then index by col
+            }
+        }
+
+        fn get_index_of_clock(&self, clock: N) -> Option<usize> {
+            self.clock_names.iter().position(|e| e == &clock)
+        }
+
+        fn consistent() {
+
+        }
+
+        fn relation() {
+
+        }
+
+        fn satisfied() {
 
         }
 
@@ -54,10 +95,62 @@ struct DBM<T, N> {
         fn shift(_clock: N, _d_val: T) {
 
         }
+    }
 
-        fn get_index_of_clock(_clock: N) {
+    #[test]
+    fn dbm_index_test1() {
+        let clocks = vec!["c1", "c2", "c3", "c4"];
+        let dbm = DBM::<u32, &str>::new(clocks);
+        let elem = *dbm.get_element(0, 0).unwrap();
+        assert_eq!(elem, 0);
+    }
 
-        }
+    #[test]
+    fn dbm_index_test2() {
+        let clocks = vec!["c1", "c2", "c3", "c4"];
+        let dbm = DBM::<u32, &str>::new(clocks);
+        let elem = *dbm.get_element(2, 3).unwrap();
+        assert_eq!(elem, 0);
+    }
+
+    #[test]
+    fn dbm_index_test3() {
+        let clocks = vec!["c1", "c2", "c3", "c4"];
+        let dbm = DBM::<u32, &str>::new(clocks);
+        let elem = *dbm.get_element(3, 1).unwrap();
+        assert_eq!(elem, 0);
+    }
+
+    #[test]
+    fn dbm_index_test_bad_index1() {
+        let clocks = vec!["c1", "c2", "c3", "c4"];
+        let dbm = DBM::<u32, &str>::new(clocks);
+        let elem = dbm.get_element(4, 0);
+        assert_eq!(elem, None);
+    }
+
+    #[test]
+    fn dbm_index_test_bad_index2() {
+        let clocks = vec!["c1", "c2", "c3", "c4"];
+        let dbm = DBM::<u32, &str>::new(clocks);
+        let elem = dbm.get_element(0, 4);
+        assert_eq!(elem, None);
+    }
+
+    #[test]
+    fn dbm_index_test_bad_index3() {
+        let clocks = vec!["c1", "c2", "c3", "c4"];
+        let dbm = DBM::<u32, &str>::new(clocks);
+        let elem = dbm.get_element(4, 4);
+        assert_eq!(elem, None);
+    }
+
+    #[test]
+    fn dbm_index_test_empty_dbm() {
+        let clocks = vec![];
+        let dbm = DBM::<u32, &str>::new(clocks);
+        let elem = dbm.get_element(0, 0);
+        assert_eq!(elem, None);
     }
 }
 

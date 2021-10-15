@@ -4,7 +4,7 @@ pub struct Bitvector {
 }
 
 impl Bitvector {
-    fn init() -> Bitvector {
+    pub fn init() -> Bitvector {
         let vector: Vec<u8> = Vec::new();
         Bitvector {
             bits: vector,
@@ -12,7 +12,13 @@ impl Bitvector {
         }
     }
 
-    fn get_bit(&self, index: u32) -> Option<bool> {
+    pub fn init_with_length(length: u32) -> Bitvector { //Normally, we would use usize here, but as length refers to amount of bits and not bytes, the benefit is diminished.
+        let mut bvec = Bitvector::init();
+        bvec.set_length(length);
+        bvec
+    }
+
+    pub fn get_bit(&self, index: u32) -> Option<bool> {
         let element_offset = index / 8;
         if let Some(element) = self.bits.get(element_offset as usize) {
             let bit_offset = index % 8;
@@ -23,7 +29,7 @@ impl Bitvector {
         }
     }
 
-    fn set_bit(&mut self, index: u32, val: bool) -> Result<(), bool> {
+    pub fn set_bit(&mut self, index: u32, val: bool) -> Result<(), bool> {
         if index > self.length {
             return Err(false);
         } //Error if we try to get an index out of bounds
@@ -47,25 +53,9 @@ impl Bitvector {
         }
     }
 
-    fn set_length(&mut self, new_length: u32) -> () {
+    pub fn set_length(&mut self, new_length: u32) {
         self.length = new_length;
-        match (new_length / 8) + (new_length % 8 != 0) as u32 {
-            //bit messy, but we also have to handle remainders
-            //If our bitvector is greater than it has to be, pop excess elements off the stack and forget them.
-            u if u < self.bits.len() as u32 => {
-                for _ in 1..=(self.bits.len() as u32 - u) {
-                    self.bits.pop();
-                }
-            }
-            //If the reverse is the case, add elements instead
-            u if u > self.bits.len() as u32 => {
-                for _ in 1..=(u - self.bits.len() as u32) {
-                    self.bits.push(0) //push an u8 of all zeroes
-                }
-            }
-            //If neither is the case, we already have the needed elements in bits, and then we do nothing.
-            _ => (),
-        }
+        self.bits.resize_with(((new_length / 8) + (new_length % 8 != 0) as u32) as usize, Default::default);
     }
 }
 #[cfg(test)]
@@ -275,5 +265,11 @@ mod tests {
 
         assert_eq!(vector.get_bit(9).unwrap(), true);
         assert_eq!(vector.get_bit(13).unwrap(), true);
+    }
+
+    #[test]
+    fn test_init_with_length() {
+        let bvec = Bitvector::init_with_length(32);
+        assert_eq!(bvec.length, 32);
     }
 }
