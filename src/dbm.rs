@@ -13,7 +13,7 @@ struct DBM<T, N> {
         bitvec: Bitvector,
     }
 
-    enum ConstraintOp{
+    enum ConstraintOp {
         LessThan,
         LessThanEqual,
     }
