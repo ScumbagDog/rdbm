@@ -57,6 +57,18 @@ impl Bitvector {
         self.length = new_length;
         self.bits.resize_with(((new_length / 8) + (new_length % 8 != 0) as u32) as usize, Default::default);
     }
+
+    pub fn get_length(&self) -> u32 {
+        self.length
+    }
+
+    pub fn get_bits_as_vec(&self) -> Vec<bool> {
+        let mut res: Vec<bool> = vec![];
+        for i in 0..self.length {
+            res.push(self.get_bit(i).unwrap());
+        }
+        res
+    }
 }
 #[cfg(test)]
 mod tests {
