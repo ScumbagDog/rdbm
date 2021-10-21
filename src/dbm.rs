@@ -105,8 +105,19 @@ pub mod dbm {
             let bound_consistency: bool = upper_bounds
                 .iter()
                 .map(|(r, c)| //map every element
-                     self.get_element(*r, *c).unwrap() > self.get_element(*c, *r).unwrap() || //and check if HB value is greater than LB value, short circuit if it is.
-                     self.get_bitval(*r, *c) >= self.get_bitval(*c, *r)) //if not, then check if HB constraint is as great as LB constrait and return its value.
+                     {
+                         let higher_bound = self.get_element(*r, *c).unwrap(); //get the higher and lower bounds for readability
+                         let lower_bound = self.get_element(*c, *r).unwrap();
+                         higher_bound > lower_bound || { //first check if HB is greater than LB. If yes, short circuit, if no, evaluate the next code block
+                             higher_bound == lower_bound && { //check if HB is equal to LB. If no, short circuit, if yes, evaluate next code block
+                                 let higher_constraint = self.get_bitval(*r, *c); //get the bitvals. We get them in here to avoid the call in the outer scope
+                                 let lower_constraint = self.get_bitval(*c, *r);
+                                 higher_constraint >= lower_constraint //check if HB constraint isn't smaller than LB constraint, and let this be the value of the entire block.
+                             }
+                         }
+                     })
+                     //self.get_element(*r, *c).unwrap() > self.get_element(*c, *r).unwrap() ||//and check if HB value is greater than LB value, short circuit if it is.
+                     //self.get_bitval(*r, *c) >= self.get_bitval(*c, *r)) //if not, then check if HB constraint is as great as LB constrait and return its value.
                 .fold(true, |acc, e| acc && e); //finally check if all values are true. Fold will return false if not
             bound_consistency //return bound_consistency as resulting value
         }
@@ -223,6 +234,32 @@ pub mod dbm {
     }
 
     #[test]
+    fn dbm_consistency_test1() {
+        let clocks = vec!["c1", "c2", "c3", "c4"];
+        let dbm = DBM::<u32, &str>::new(clocks);
+        assert_eq!(dbm.consistent(), true); //a dbm filled with (0, lte) should be consistent
+    }
+
+    #[test]
+    fn dbm_consistency_test2() {
+        let clocks = vec!["c1", "c2", "c3", "c4"];
+        let mut dbm = DBM::<u32, &str>::new(clocks);
+        let mut val = dbm.matrix.get_mut(1).unwrap(); //get mutable reference to the value in (0, 1)
+        *val = 1; //set (0, 1) to be 1
+        assert_eq!(dbm.consistent(), true); // as the upper bound in (0, 1) isn't smaller than the lower bound in (1, 0), dbm should be consistent
+    }
+
+    #[test]
+    fn dbm_consistency_test3() {
+        let clocks = vec!["c1", "c2", "c3", "c4"];
+        let mut dbm = DBM::<u32, &str>::new(clocks);
+        let dimsize = dbm.get_dimsize();
+        let mut val = dbm.matrix.get_mut(dimsize).unwrap(); //get mutable reference to the value in (1, 0). (we use dimsize to skip the first row)
+        *val = 1; //set (1, 0) to be 1
+        assert_eq!(dbm.consistent(), false); // as the upper bound in (0, 1) IS smaller than the lower bound in (1, 0), dbm shouldn't be consistent
+    }
+
+    #[test]
     fn dbm_print_test() {
         let clocks = vec!["c1", "c2", "c3", "c4"];
         //lines declared seperately, as it makes it much nicer to look at
@@ -232,8 +269,8 @@ pub mod dbm {
         let line4 = "|(0, ≤), (0, ≤), (0, ≤), (0, ≤), (0, ≤)|\n";
         let line5 = "|(0, ≤), (0, ≤), (0, ≤), (0, ≤), (0, ≤)|\n";
         let printed_vec = String::new() + line1 + line2 + line3 + line4 + line5; //so to concatenate, we need an owned string (String) to concat into.
-    let dbm = DBM::<u32, &str>::new(clocks);
-    assert_eq!(format!("{}", dbm), printed_vec); //check if format runs
+        let dbm = DBM::<u32, &str>::new(clocks);
+        assert_eq!(format!("{}", dbm), printed_vec);
     }
 }
 
