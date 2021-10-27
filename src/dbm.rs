@@ -122,7 +122,14 @@ pub mod dbm {
             bound_consistency //return bound_consistency as resulting value
         }
 
-        fn relation() {}
+        fn relation(first: &DBM<T, N>, second: &DBM<T, N>) -> bool { //I considered doing this as a method, but I ultimately decided to do it as a normal function, as it looks somewhat nicer
+            first.get_dimsize() == second.get_dimsize() && { //dimension check for short circuit and iterator size later.
+                let first_iter = first.matrix.iter();
+                let second_iter = second.matrix.iter();
+                first_iter.le(second_iter) //check if every element in first_iter is less than or equal to its corresponding element in second_iter.
+                //Will return true even if first_iter has fewer elements than second_iter (so long as they are less than or equal to second_iter), so dimension check is still needed
+            }
+        }
 
         fn satisfied() {}
 
@@ -258,6 +265,53 @@ pub mod dbm {
         *val = 1; //set (1, 0) to be 1
         assert_eq!(dbm.consistent(), false); // as the upper bound in (0, 1) IS smaller than the lower bound in (1, 0), dbm shouldn't be consistent
     }
+    #[test]
+    fn dbm_relation_test1() {
+        let clocks = vec!["c1", "c2", "c3", "c4"];
+        let mut dbm_le = DBM::<u32, &str>::new(clocks.to_owned());
+        let mut dbm_gt = DBM::<u32, &str>::new(clocks);
+        let mut val = dbm_gt.matrix.get_mut(1).unwrap(); //get mutable reference to the value in (0, 1)
+        *val = 1; //set (0, 1) to be 1. dbm_gt should now be greater than dbm_le
+        assert_eq!(DBM::relation(&dbm_le, &dbm_gt), true);
+        assert_eq!(DBM::relation(&dbm_gt, &dbm_le), false);
+    }
+
+    #[test]
+    fn dbm_relation_test2() {
+        let clocks = vec!["c1", "c2", "c3", "c4"];
+        let mut dbm_le = DBM::<u32, &str>::new(clocks.to_owned());
+        let mut dbm_gte = DBM::<u32, &str>::new(clocks);
+        assert_eq!(DBM::relation(&dbm_le, &dbm_gte), true); //now they are equal
+        assert_eq!(DBM::relation(&dbm_gte, &dbm_le), true); //both checks should run
+    }
+
+    #[test]
+    fn dbm_relation_test3() {
+        let clocks = vec!["c1", "c2", "c3", "c4"];
+        let mut dbm_le = DBM::<u32, &str>::new(clocks.to_owned());
+        let mut dbm_gte = DBM::<u32, &str>::new(clocks);
+        let mut val_gte = dbm_gte.matrix.get_mut(1).unwrap();
+        let mut val_lte = dbm_le.matrix.get_mut(1).unwrap();
+        *val_gte = 1;
+        *val_lte = 1;
+        assert_eq!(DBM::relation(&dbm_le, &dbm_gte), true); //they are still equal
+        assert_eq!(DBM::relation(&dbm_gte, &dbm_le), true); //So both should return true
+    }
+
+    #[test]
+    fn dbm_relation_test4() {
+        let clocks = vec!["c1", "c2", "c3", "c4"];
+        let smol_clocks = vec!["c1", "c2", "c3"];
+        let mut dbm_le = DBM::<u32, &str>::new(smol_clocks);
+        let mut dbm_gte = DBM::<u32, &str>::new(clocks);
+        let mut val_gte = dbm_gte.matrix.get_mut(1).unwrap();
+        let mut val_lte = dbm_le.matrix.get_mut(1).unwrap();
+        *val_gte = 1;
+        *val_lte = 1;
+        assert_eq!(DBM::relation(&dbm_le, &dbm_gte), false); //values are equal
+        assert_eq!(DBM::relation(&dbm_gte, &dbm_le), false); //but dimensions are different, so return false
+    }
+
 
     #[test]
     fn dbm_print_test() {
