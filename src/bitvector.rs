@@ -3,6 +3,11 @@ pub struct Bitvector {
     length: u32,
 }
 
+pub struct BitvectorIterator<'a> {
+    bitvec: &'a Bitvector,
+    current_index: u32,
+}
+
 impl Bitvector {
     pub fn init() -> Bitvector {
         let vector: Vec<u8> = Vec::new();
@@ -29,9 +34,9 @@ impl Bitvector {
         }
     }
 
-    pub fn set_bit(&mut self, index: u32, val: bool) -> Result<(), bool> {
+    pub fn set_bit(&mut self, index: u32, val: bool) -> Result<(), ()> {
         if index > self.length {
-            return Err(false);
+            return Err(());
         } //Error if we try to get an index out of bounds
         let element_offset = index / 8;
         //Otherwise, the order of the bitvec is left->right while the elements inside the bytes are ordered left<-right
@@ -49,7 +54,7 @@ impl Bitvector {
             }
             Ok(()) //If all's well, return ok
         } else {
-            Err(false) //If we somehow index improperly, just error. Should be handled above, but just in case.
+            Err(()) //If we somehow index improperly, just error. Should be handled above, but just in case.
         }
     }
 
@@ -69,7 +74,26 @@ impl Bitvector {
         }
         res
     }
+
+    pub fn get_iterator(&self) -> impl Iterator<Item = bool> + '_ {
+        BitvectorIterator {
+            bitvec: self,
+            current_index: 0,
+        }
+    }
+
 }
+
+impl Iterator for BitvectorIterator<'_> {
+
+    type Item = bool;
+    fn next(&mut self) -> std::option::Option<<Self as std::iter::Iterator>::Item> {
+        let next_val = self.bitvec.get_bit(self.current_index);
+        self.current_index += 1;
+        next_val
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::bitvector::Bitvector;
