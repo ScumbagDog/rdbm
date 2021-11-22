@@ -10,10 +10,13 @@ pub mod dbm {
     use crate::dbm::dbm::ConstraintOp::{LessThan, LessThanEqual};
     use std::fmt;
     use std::ops::Add;
-    struct DBM<T, N> {
+    use num::Bounded;
+    use num::Zero;
+
+    pub struct DBM<T, N> {
         matrix: Vec<T>,
         clock_names: Vec<N>,
-        bitvec: Bitvector,
+        ops: Bitvector,
     }
 
     #[derive(PartialEq, PartialOrd, Debug, Default)]
@@ -31,6 +34,14 @@ pub mod dbm {
     impl<T: std::fmt::Display> fmt::Display for Bound<T> {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
             write!(f, "({}, {})", self.boundval, self.constraint_op)
+        }
+    }
+
+    impl<T: std::ops::Add<Output = T>> Add for Bound<T> {
+
+        type Output = Self;
+        fn add(self, rhs: Self) -> <Self as std::ops::Add<Self>>::Output {
+            Bound{boundval: self.boundval + rhs.boundval, constraint_op: self.constraint_op + rhs.constraint_op}
         }
     }
 
@@ -83,12 +94,17 @@ pub mod dbm {
         }
     }
 
+    impl<T: Bounded> Bounded for Bound<T> {
+        fn max_value() -> Self { Bound{boundval: T::max_value(), constraint_op: LessThanEqual} }
+        fn min_value() -> Self { Bound{boundval: T::min_value(), constraint_op: LessThanEqual} }
+    }
+
     impl<
             T: std::default::Default + std::cmp::PartialOrd + Clone + std::ops::Add<Output = T>, //For all T's that implement Default trait
             N: std::default::Default + std::cmp::Ord, //all N's that implement Ord and Default traits
         > DBM<T, N>
     {
-        fn new(mut clocks: Vec<N>) -> DBM<T, N> {
+        pub fn new(mut clocks: Vec<N>) -> DBM<T, N> {
             //Intentionally doesn't take a reference, as we would like the names to be owned by the data structure
             clocks.insert(0, Default::default());
             let bitvector = Bitvector::init_with_length((clocks.len() * clocks.len()) as u32);
@@ -98,7 +114,7 @@ pub mod dbm {
             Self {
                 matrix: matrix,
                 clock_names: clocks,
-                bitvec: bitvector,
+                ops: bitvector,
             }
         }
 
@@ -129,19 +145,19 @@ pub mod dbm {
         }
 
         fn get_bitval(&self, row: usize, col: usize) -> Option<bool> {
-            self.bitvec.get_bit((row * self.get_dimsize() + col) as u32)
+            self.ops.get_bit((row * self.get_dimsize() + col) as u32)
         }
 
         fn set_bitval(&mut self, row: usize, col: usize, val: bool) -> Result<(), ()> {
-            self.bitvec
+            self.ops
                 .set_bit((row * self.get_dimsize() + col) as u32, val)
         }
 
         fn get_bound(&self, row: usize, col: usize) -> Option<Bound<T>> {
             let boundval_option = self.get_element(row, col);
-            if let Some(val) = boundval_option {
+            if let Some(val) = boundval_option { //if we actually get a boundval, cast it to val
                 let constraint_op_option = self.get_bitval(row, col);
-                if let Some(boolval) = constraint_op_option {
+                if let Some(boolval) = constraint_op_option { // If we get a boolval, cast it to boolval
                     return Some(Bound {
                         boundval: val.clone(),
                         constraint_op: ConstraintOp::from(boolval),
@@ -166,7 +182,7 @@ pub mod dbm {
         fn get_bound_iter(&self) -> impl Iterator<Item = Bound<&T>> + '_ {
             //This function looks deceptively simple. It is an absolute mess behind the scenes.
             let matrix_iter = self.matrix.iter(); //If you ever decide to refactor it, prepare yourself for generic
-            let bitvec_iter = self.bitvec.get_iterator();
+            let bitvec_iter = self.ops.get_iterator();
             matrix_iter.zip(bitvec_iter).map(|(val, bitval)| Bound {
                 boundval: val,
                 constraint_op: ConstraintOp::from(bitval),
@@ -177,15 +193,15 @@ pub mod dbm {
             self.clock_names.iter().position(|e| e == &clock)
         }
 
-        fn consistent(&self) -> bool {
-            //should be run after the tighten function, as index (i, i) will be annotated there
+        pub fn consistent(dbm: &DBM<T, N>) -> bool {
+            //should be run after the close function, as index (i, i) will be annotated there (or not, depending on whether there are negative cycles or not)
             //alternatively after another transformation, as it preserves the consistent status
-            (0..self.get_dimsize())
-                .map(|c| self.get_bound(c, c).unwrap() == Default::default()) //could be optimized to short circuit early, but this is easier to implement and looks nicer, so ¯\_(ツ)_/¯
+            (0..dbm.get_dimsize())
+                .map(|c| dbm.get_bound(c, c).unwrap() == Default::default()) //could be optimized to short circuit early, but this is easier to implement and looks nicer, so ¯\_(ツ)_/¯
                 .fold(true, |acc, e| acc && e)
         }
 
-        fn relation(first: &DBM<T, N>, second: &DBM<T, N>) -> bool {
+        pub fn relation(first: &DBM<T, N>, second: &DBM<T, N>) -> bool {
             //I considered doing this as a method, but I ultimately decided to do it as a normal function, as it looks somewhat nicer
             first.get_dimsize() == second.get_dimsize() && {
                 //dimension check for short circuit and iterator size later.
@@ -196,43 +212,53 @@ pub mod dbm {
             }
         }
 
-        fn satisfied(row_clock: N, col_clock: N, op: ConstraintOp, constant: T) {}
+        pub fn satisfied(dbm: &DBM<T, N>, row_clock: N, col_clock: N, op: ConstraintOp, val: T) -> Result<bool, ()> { //Should be called after close
+            if let Some(row) = dbm.get_index_of_clock(row_clock) {
+                if let Some(col) = dbm.get_index_of_clock(col_clock) {
+                    let local_bound = dbm.get_bound(row, col).unwrap();
+                    let new_bound = Bound{boundval: val, constraint_op: op};
+                    let default_bound: Bound<T> = Default::default();
+                    Ok((local_bound + new_bound) < default_bound)
+                } else {
+                    Err(())
+                }
+            } else {
+                Err(())
+            }
+        }
 
-        fn close(&mut self) {
+        pub fn close(dbm: &mut DBM<T, N>) {
             //Essentially the Floyd-Warshall algorithm
-            let dimsize = self.get_dimsize();
+            let dimsize = dbm.get_dimsize();
             for k in 0..dimsize {
                 for i in 0..dimsize {
                     for j in 0..dimsize {
-                        let ij_bound = self.get_bound(i, j).unwrap();
-                        let ik_bound = self.get_bound(i, k).unwrap();
-                        let kj_bound = self.get_bound(k, j).unwrap();
-                        let ikj_bound = Bound {
-                            boundval: ik_bound.boundval + kj_bound.boundval,
-                            constraint_op: ik_bound.constraint_op + kj_bound.constraint_op,
-                        };
+                        let ij_bound = dbm.get_bound(i, j).unwrap();
+                        let ik_bound = dbm.get_bound(i, k).unwrap();
+                        let kj_bound = dbm.get_bound(k, j).unwrap();
+                        let ikj_bound = ik_bound + kj_bound;
                         if ij_bound > ikj_bound {
-                            self.set_bound(i, j, ikj_bound).unwrap();
+                            dbm.set_bound(i, j, ikj_bound).unwrap();
                         }
                     }
                 }
             }
         }
 
-        fn up() {}
+        pub fn up(dbm: &mut DBM<T, N>) {}
 
-        fn down() {}
+        pub fn down(dbm: &mut DBM<T, N>) {}
 
-        fn free(_clock_to_free: N) {}
+        pub fn free(dbm: &mut DBM<T, N>, _clock_to_free: N) {}
 
-        fn reset(_clock_to_reset: N, _reset_val: T) {}
+        pub fn reset(dbm: &mut DBM<T, N>, _clock_to_reset: N, _reset_val: T) {}
 
-        fn copy(_clock_target: N, _clock_src: N) {}
+        pub fn copy(dbm: &mut DBM<T, N>,_clock_target: N, _clock_src: N) {}
 
-        fn and(row_clock: N, col_clock: N, op: ConstraintOp, constant: T) { //Constraint is a tuple over T and ConstraintOP, as this mimicks the notation in Timed Automata: Semantics, Algorithms and Tools by Bengtsson and Yi
+        pub fn and(dbm: &mut DBM<T, N>, row_clock: N, col_clock: N, op: ConstraintOp, constant: T) { //Constraint is a tuple over T and ConstraintOP, as this mimicks the notation in Timed Automata: Semantics, Algorithms and Tools by Bengtsson and Yi
         }
 
-        fn shift(_clock: N, _d_val: T) {}
+        pub fn shift(dbm: &mut DBM<T, N>, _clock: N, _d_val: T) {}
     }
 
     impl<
@@ -245,7 +271,7 @@ pub mod dbm {
         > fmt::Display for DBM<T, N>
     {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
-            let mut bitstring = self.bitvec.get_bits_as_vec();
+            let mut bitstring = self.ops.get_bits_as_vec();
             let mut bitstring_chunks = bitstring.chunks(self.get_dimsize());
             for r in self.matrix.chunks(self.get_dimsize()) {
                 let mut bit_r = bitstring_chunks.next().unwrap().iter();
@@ -382,7 +408,7 @@ pub mod dbm {
         let dbm = DBM::<i32, &str>::new(clocks);
         assert_eq!(
             dbm.get_dimsize() * dbm.get_dimsize(),
-            dbm.bitvec.get_length() as usize
+            dbm.ops.get_length() as usize
         );
     }
 
@@ -439,8 +465,8 @@ pub mod dbm {
     fn dbm_consistency_test1() {
         let clocks = vec!["c1", "c2", "c3", "c4"];
         let mut dbm = DBM::<i32, &str>::new(clocks);
-        dbm.close();
-        assert_eq!(dbm.consistent(), true); //a dbm filled with (0, lte) should be consistent
+        DBM::close(&mut dbm);
+        assert_eq!(DBM::consistent(&dbm), true); //a dbm filled with (0, lte) should be consistent
     }
 
     #[test]
@@ -449,8 +475,8 @@ pub mod dbm {
         let mut dbm = DBM::<i32, &str>::new(clocks);
         let mut val = dbm.matrix.get_mut(1).unwrap(); //get mutable reference to the value in (0, 1)
         *val = 1; //set (0, 1) to be 1
-        dbm.close();
-        assert_eq!(dbm.consistent(), true); // as the upper bound in (0, 1) isn't smaller than the lower bound in (1, 0), dbm should be consistent
+        DBM::close(&mut dbm);
+        assert_eq!(DBM::consistent(&dbm), true); // as the upper bound in (0, 1) isn't smaller than the lower bound in (1, 0), dbm should be consistent
     }
 
     #[test]
@@ -460,8 +486,8 @@ pub mod dbm {
         let dimsize = dbm.get_dimsize();
         let mut val = dbm.matrix.get_mut(dimsize).unwrap(); //get mutable reference to the value in (1, 0). (we use dimsize to skip the first row)
         *val = 1; //set (1, 0) to be 1, meaning that 0-x <= 1 ~ -x <= 1
-        dbm.close();
-        assert_eq!(dbm.consistent(), true); // While this means that the zone is behind the x-axis which violates our implicit constraint that clocks are non-negative, it doesn't make it inconsistent, as we can tighten the bound.
+        DBM::close(&mut dbm);
+        assert_eq!(DBM::consistent(&dbm), true); // While this means that the zone is behind the x-axis which violates our implicit constraint that clocks are non-negative, it doesn't make it inconsistent, as we can tighten the bound.
     }
 
     #[test]
@@ -471,8 +497,8 @@ pub mod dbm {
         let dimsize = dbm.get_dimsize();
         let mut val = dbm.matrix.get_mut(dimsize).unwrap(); //get mutable reference to the value in (1, 0). (we use dimsize to skip the first row)
         *val = -1; //set (1, 0) to be -1, meaning that 0-x <= -1 ~ -x <= -1
-        dbm.close();
-        assert_eq!(dbm.consistent(), false); //As the corresponding bound in (0, 1) is (0 <=), this would mean that the intersection between the bounds is Ø (empty), as no x is both smaller than 0 and greater than 1/ !!Inconsistent
+        DBM::close(&mut dbm);
+        assert_eq!(DBM::consistent(&dbm), false); //As the corresponding bound in (0, 1) is (0 <=), this would mean that the intersection between the bounds is Ø (empty), as no x is both smaller than 0 and greater than 1/ !!Inconsistent
     }
 
     #[test]
@@ -481,8 +507,8 @@ pub mod dbm {
         let mut dbm = DBM::<i32, &str>::new(clocks);
         let mut val = dbm.matrix.get_mut(1).unwrap(); //get mutable reference to the value in (0, 1)
         *val = -1;
-        dbm.close();
-        assert_eq!(dbm.consistent(), false); // Same deal as in consistency test 4, the bounds are flipped. No x that is smaller than -1 and greater than 0 => inconsistent DBM
+        DBM::close(&mut dbm);
+        assert_eq!(DBM::consistent(&dbm), false); // Same deal as in consistency test 4, the bounds are flipped. No x that is smaller than -1 and greater than 0 => inconsistent DBM
     }
 
     #[test]

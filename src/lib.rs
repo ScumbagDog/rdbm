@@ -1,2 +1,2 @@
-mod dbm;
+pub mod dbm;
 mod bitvector;
