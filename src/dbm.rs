@@ -8,10 +8,10 @@ pub mod dbm {
 
     use crate::bitvector::Bitvector;
     use crate::dbm::dbm::ConstraintOp::{LessThan, LessThanEqual};
-    use std::fmt;
-    use std::ops::Add;
     use num::Bounded;
     use num::Zero;
+    use std::fmt;
+    use std::ops::Add;
 
     pub struct DBM<T> {
         matrix: Vec<T>,
@@ -80,39 +80,50 @@ pub mod dbm {
         }
     }
 
-     impl<T: std::fmt::Display> fmt::Display for Bound<T> {
+    impl<T: std::fmt::Display> fmt::Display for Bound<T> {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
             write!(f, "({}, {})", self.boundval, self.constraint_op)
         }
     }
 
     impl<T: std::ops::Add<Output = T>> Add for Bound<T> {
-
         type Output = Self;
         fn add(self, rhs: Self) -> <Self as std::ops::Add<Self>>::Output {
-            Bound{boundval: self.boundval + rhs.boundval, constraint_op: self.constraint_op + rhs.constraint_op}
+            Bound {
+                boundval: self.boundval + rhs.boundval,
+                constraint_op: self.constraint_op + rhs.constraint_op,
+            }
         }
     }
 
     impl<'a, 'b, T: std::ops::Add<Output = T> + Clone> Add<&'b Bound<T>> for &'a Bound<T> {
-
         type Output = Bound<T>;
         fn add(self, rhs: &'b Bound<T>) -> Bound<T> {
-            Bound{boundval: self.boundval.clone() + rhs.boundval.clone(), constraint_op: self.constraint_op + rhs.constraint_op}
+            Bound {
+                boundval: self.boundval.clone() + rhs.boundval.clone(),
+                constraint_op: self.constraint_op + rhs.constraint_op,
+            }
         }
     }
 
-
-
     impl<T: Bounded> Bounded for Bound<T> {
-        fn max_value() -> Self { Bound{boundval: T::max_value(), constraint_op: LessThanEqual} }
-        fn min_value() -> Self { Bound{boundval: T::min_value(), constraint_op: LessThanEqual} }
+        fn max_value() -> Self {
+            Bound {
+                boundval: T::max_value(),
+                constraint_op: LessThanEqual,
+            }
+        }
+        fn min_value() -> Self {
+            Bound {
+                boundval: T::min_value(),
+                constraint_op: LessThanEqual,
+            }
+        }
     }
 
     impl<T: Zero + PartialEq> Zero for Bound<T> {
-
         fn zero() -> Self {
-            Bound{
+            Bound {
                 boundval: num::zero(),
                 constraint_op: LessThanEqual,
             }
@@ -124,19 +135,15 @@ pub mod dbm {
     }
 
     impl<T: std::cmp::PartialEq + num::Bounded> Bound<T> {
-        fn is_infinite(&self) -> bool {
-            self == &Bound::max_value()
-        }
-
         fn get_infinite_bound() -> Bound<T> {
             Bound {
                 boundval: Bounded::max_value(),
-                constraint_op: LessThanEqual
+                constraint_op: LessThanEqual,
             }
         }
     }
-    impl<T> DBM<T> { //This impl is without traits, which allows us to print without satisfying all the other traits we don't need anyway (because the dimsize function now has a traitless-impl)
-
+    impl<T> DBM<T> {
+        //This impl is without traits, which allows us to print without satisfying all the other traits we don't need anyway (because the dimsize function now has a traitless-impl)
 
         fn get_dimsize(&self) -> usize {
             //only need one function, as the matrices are always quadratic
@@ -175,7 +182,13 @@ pub mod dbm {
     }
 
     impl<
-            T: std::default::Default + std::cmp::Ord + Clone + std::ops::Add<Output = T> + num::Bounded + num::Zero + std::ops::Neg<Output = T>, //For all T's that implement the following traits
+            T: std::default::Default
+                + std::cmp::Ord
+                + Clone
+                + std::ops::Add<Output = T>
+                + num::Bounded
+                + num::Zero
+                + std::ops::Neg<Output = T>, //For all T's that implement the following traits
         > DBM<T>
     {
         pub fn new(mut clocks: Vec<u8>) -> DBM<T> {
@@ -194,9 +207,11 @@ pub mod dbm {
 
         fn get_bound(&self, row: usize, col: usize) -> Option<Bound<T>> {
             let boundval_option = self.get_element(row, col);
-            if let Some(val) = boundval_option { //if we actually get a boundval, cast it to val
+            if let Some(val) = boundval_option {
+                //if we actually get a boundval, cast it to val
                 let constraint_op_option = self.get_bitval(row, col);
-                if let Some(boolval) = constraint_op_option { // If we get a boolval, cast it to boolval
+                if let Some(boolval) = constraint_op_option {
+                    // If we get a boolval, cast it to boolval
                     return Some(Bound {
                         boundval: val.clone(),
                         constraint_op: ConstraintOp::from(boolval),
@@ -247,15 +262,24 @@ pub mod dbm {
             }
         }
 
-        pub fn satisfied(dbm: &DBM<T>, row: u8, col: u8, op: ConstraintOp, val: T) -> Result<bool, ()> { //Should be called after close
+        pub fn satisfied(
+            dbm: &DBM<T>,
+            row: u8,
+            col: u8,
+            op: ConstraintOp,
+            val: T,
+        ) -> Result<bool, ()> {
+            //Should be called after close
             if row as usize >= dbm.get_dimsize() || col as usize >= dbm.get_dimsize() {
                 Err(())
-            }
-            else {
-                 let local_bound = dbm.get_bound(row.into(), col.into()).unwrap(); //into usize type, as get_bound doesn't take u8s
-                    let new_bound = Bound{boundval: val, constraint_op: op};
-                    let default_bound: Bound<T> = Default::default();
-                    Ok((local_bound + new_bound) < default_bound)
+            } else {
+                let local_bound = dbm.get_bound(row.into(), col.into()).unwrap(); //into usize type, as get_bound doesn't take u8s
+                let new_bound = Bound {
+                    boundval: val,
+                    constraint_op: op,
+                };
+                let default_bound: Bound<T> = Default::default();
+                Ok((local_bound + new_bound) < default_bound)
             }
         }
 
@@ -281,8 +305,9 @@ pub mod dbm {
             let dimsize = dbm.get_dimsize();
             let infinite_bound: Bound<T> = Bound::get_infinite_bound(); //we just pretend that the max value is the infinite :). As such, it is the responsibility of whoever uses a DBM to ensure, that we never exceed the max value that T can capture.
             for i in 1..dimsize {
-                if let Err(()) = dbm.set_bound(i, 0, infinite_bound.clone()) { //If we get an error while setting the bound, return the error. Realistically though, this should not happen.
-                   return Err(());
+                if let Err(()) = dbm.set_bound(i, 0, infinite_bound.clone()) {
+                    //If we get an error while setting the bound, return the error. Realistically though, this should not happen.
+                    return Err(());
                 }
             }
             Ok(())
@@ -300,7 +325,7 @@ pub mod dbm {
                     if let Some(ij_bound) = ij_bound_option {
                         if ij_bound < zero_bound {
                             dbm.set_bound(0, i, ij_bound).unwrap(); //This can be optimized by only making one check on ij, and then setting (0,i) to either the value of D_ij or zero, instead of setting (0,i) and then potentially resetting it.
-                        }                                           //But this follows the pseudocode more closely, so implemented like this for now.
+                        } //But this follows the pseudocode more closely, so implemented like this for now.
                     }
                 }
             }
@@ -310,32 +335,34 @@ pub mod dbm {
         pub fn free(dbm: &mut DBM<T>, clock_to_free: u8) -> Result<(), ()> {
             if clock_to_free as usize >= dbm.get_dimsize() {
                 Err(())
-            }
-            else {
-            let inf_bound: Bound<T> = Bound::get_infinite_bound();
+            } else {
+                let inf_bound: Bound<T> = Bound::get_infinite_bound();
                 for i in 1..dbm.get_dimsize() {
                     if i != clock_to_free as usize {
                         let i0_bound = dbm.get_bound(i, 0).unwrap();
                         dbm.set_bound(clock_to_free.into(), i, inf_bound.clone())?;
                         dbm.set_bound(i, clock_to_free.into(), i0_bound)?;
-            
-                }
+                    }
                 }
                 Ok(())
             }
-            
         }
 
         pub fn reset(dbm: &mut DBM<T>, clock_to_reset: u8, reset_val: T) -> Result<(), ()> {
             if clock_to_reset as usize >= dbm.get_dimsize() {
                 Err(())
-            }
-            else {
+            } else {
                 for i in 0..dbm.get_dimsize() {
                     let zero_i_bound = dbm.get_bound(0, i).unwrap();
                     let i_zero_bound = dbm.get_bound(i, 0).unwrap();
-                    let positive_bound = Bound{boundval: reset_val.clone(), constraint_op: LessThanEqual};
-                    let negative_bound = Bound{boundval: -reset_val.clone(), constraint_op: LessThanEqual};
+                    let positive_bound = Bound {
+                        boundval: reset_val.clone(),
+                        constraint_op: LessThanEqual,
+                    };
+                    let negative_bound = Bound {
+                        boundval: -reset_val.clone(),
+                        constraint_op: LessThanEqual,
+                    };
                     dbm.set_bound(clock_to_reset.into(), i, positive_bound + zero_i_bound)?;
                     dbm.set_bound(i, clock_to_reset.into(), i_zero_bound + negative_bound)?;
                 }
@@ -344,10 +371,10 @@ pub mod dbm {
         }
 
         pub fn copy(dbm: &mut DBM<T>, clock_target: u8, clock_src: u8) -> Result<(), ()> {
-            if clock_target as usize >= dbm.get_dimsize() || clock_src as usize >= dbm.get_dimsize() {
+            if clock_target as usize >= dbm.get_dimsize() || clock_src as usize >= dbm.get_dimsize()
+            {
                 Err(())
-            }
-            else {
+            } else {
                 let target_index = clock_target.into();
                 let src_index = clock_src.into();
                 for i in 0..dbm.get_dimsize() {
@@ -363,19 +390,35 @@ pub mod dbm {
             }
         }
 
-        pub fn and(dbm: &mut DBM<T>, row_clock: u8, col_clock: u8, op: ConstraintOp, constant: T) -> Result<(), ()> { //Constraint is a tuple over T and ConstraintOP, as this mimicks the notation in Timed Automata: Semantics, Algorithms and Tools by Bengtsson and Yi
+        pub fn and(
+            dbm: &mut DBM<T>,
+            row_clock: u8,
+            col_clock: u8,
+            op: ConstraintOp,
+            constant: T,
+        ) -> Result<(), ()> {
+            //Constraint is a tuple over T and ConstraintOP, as this mimicks the notation in Timed Automata: Semantics, Algorithms and Tools by Bengtsson and Yi
             if row_clock as usize >= dbm.get_dimsize() || col_clock as usize >= dbm.get_dimsize() {
                 Err(())
-            }
-            else {
+            } else {
                 let row_index = row_clock.into();
                 let col_index = col_clock.into();
                 let local_bound = dbm.get_bound(col_index, row_index).unwrap(); //the bound in (y,x)
-                let and_bound = Bound{boundval: constant, constraint_op: op};
-                if &local_bound + &and_bound < num::zero() { //num zero means a zero-bound
-                    dbm.set_bound(0, 0, Bound{boundval: num::Bounded::min_value(), constraint_op: LessThanEqual})?; //We use min_value in place of a negative number, and then it is the user's responsibility to call it with a signed type (or a type where min<zero)
-                }
-                else if and_bound < local_bound {
+                let and_bound = Bound {
+                    boundval: constant,
+                    constraint_op: op,
+                };
+                if &local_bound + &and_bound < num::zero() {
+                    //num zero means a zero-bound
+                    dbm.set_bound(
+                        0,
+                        0,
+                        Bound {
+                            boundval: num::Bounded::min_value(),
+                            constraint_op: LessThanEqual,
+                        },
+                    )?; //We use min_value in place of a negative number, and then it is the user's responsibility to call it with a signed type (or a type where min<zero)
+                } else if and_bound < local_bound {
                     dbm.set_bound(row_index, col_index, local_bound)?;
                     for i in 0..dbm.get_dimsize() {
                         for j in 0..dbm.get_dimsize() {
@@ -392,36 +435,55 @@ pub mod dbm {
                             }
                         }
                     }
-
                 }
 
-                    Ok(())
-
+                Ok(())
             }
         }
 
         pub fn shift(dbm: &mut DBM<T>, clock: u8, delta_val: T) -> Result<(), ()> {
             if clock as usize >= dbm.get_dimsize() {
                 Err(())
-            }
-            else {
+            } else {
                 let clock_index = clock.into();
-                let local_bound = Bound{boundval: delta_val, constraint_op: LessThanEqual};
+                let local_bound = Bound {
+                    boundval: delta_val,
+                    constraint_op: LessThanEqual,
+                };
                 for i in 0..dbm.get_dimsize() {
                     if i != clock_index {
-                        dbm.set_bound(clock_index, i, dbm.get_bound(clock_index, i).unwrap() + local_bound.clone()).unwrap();
-                        dbm.set_bound(i, clock_index, dbm.get_bound(i, clock_index).unwrap() + local_bound.clone()).unwrap();
+                        dbm.set_bound(
+                            clock_index,
+                            i,
+                            dbm.get_bound(clock_index, i).unwrap() + local_bound.clone(),
+                        )
+                        .unwrap();
+                        dbm.set_bound(
+                            i,
+                            clock_index,
+                            dbm.get_bound(i, clock_index).unwrap() + local_bound.clone(),
+                        )
+                        .unwrap();
                     }
                 }
-                dbm.set_bound(clock_index, 0, std::cmp::min(num::zero(), dbm.get_bound(clock_index, 0).unwrap())).unwrap();
-                dbm.set_bound(0, clock_index, std::cmp::min(num::zero(), dbm.get_bound(0, clock_index).unwrap())).unwrap();
+                dbm.set_bound(
+                    clock_index,
+                    0,
+                    std::cmp::min(num::zero(), dbm.get_bound(clock_index, 0).unwrap()),
+                )
+                .unwrap();
+                dbm.set_bound(
+                    0,
+                    clock_index,
+                    std::cmp::min(num::zero(), dbm.get_bound(0, clock_index).unwrap()),
+                )
+                .unwrap();
                 Ok(())
             }
         }
     }
 
-    impl<T: fmt::Display> fmt::Display for DBM<T>
-    {
+    impl<T: fmt::Display> fmt::Display for DBM<T> {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
             let bitstring = self.ops.get_bits_as_vec();
             let mut bitstring_chunks = bitstring.chunks(self.get_dimsize());
