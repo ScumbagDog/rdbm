@@ -448,7 +448,7 @@ pub mod dbm {
             let mut bitstring_chunks = bitstring.chunks(self.get_dimsize());
             for r in self.matrix.chunks(self.get_dimsize()) {
                 let mut bit_r = bitstring_chunks.next().unwrap().iter();
-                write!(f, "|");
+                write!(f, "|").unwrap();
                 let mut r = r.into_iter().peekable();
                 while let Some(e) = r.next() {
                     let e_bitval = bit_r.next().unwrap();
@@ -456,9 +456,9 @@ pub mod dbm {
                         boundval: e,
                         constraint_op: ConstraintOp::from(*e_bitval),
                     };
-                    write!(f, "{}", bound);
+                    write!(f, "{}", bound).unwrap();
                     match r.peek() {
-                        Some(a) => write!(f, ", "),
+                        Some(_a) => write!(f, ", "),
                         None => write!(f, "|\n"),
                     }
                     .unwrap();
@@ -621,8 +621,8 @@ pub mod dbm {
     fn dbm_bound_test1() {
         let clocks = vec!["c1", "c2", "c3", "c4"];
         let mut dbm = DBM::<i32, &str>::new(clocks);
-        dbm.set_bitval(0, 1, true);
-        let mut elem = dbm.matrix.get_mut(1).unwrap();
+        dbm.set_bitval(0, 1, true).unwrap();
+        let elem = dbm.matrix.get_mut(1).unwrap();
         *elem = 4;
         let bound = dbm.get_bound(0, 1);
         assert_eq!(
@@ -646,7 +646,7 @@ pub mod dbm {
     fn dbm_consistency_test2() {
         let clocks = vec!["c1", "c2", "c3", "c4"];
         let mut dbm = DBM::<i32, &str>::new(clocks);
-        let mut val = dbm.matrix.get_mut(1).unwrap(); //get mutable reference to the value in (0, 1)
+        let val = dbm.matrix.get_mut(1).unwrap(); //get mutable reference to the value in (0, 1)
         *val = 1; //set (0, 1) to be 1
         DBM::close(&mut dbm);
         assert_eq!(DBM::consistent(&dbm), true); // as the upper bound in (0, 1) isn't smaller than the lower bound in (1, 0), dbm should be consistent
@@ -657,7 +657,7 @@ pub mod dbm {
         let clocks = vec!["c1", "c2", "c3", "c4"];
         let mut dbm = DBM::<i32, &str>::new(clocks);
         let dimsize = dbm.get_dimsize();
-        let mut val = dbm.matrix.get_mut(dimsize).unwrap(); //get mutable reference to the value in (1, 0). (we use dimsize to skip the first row)
+        let val = dbm.matrix.get_mut(dimsize).unwrap(); //get mutable reference to the value in (1, 0). (we use dimsize to skip the first row)
         *val = 1; //set (1, 0) to be 1, meaning that 0-x <= 1 ~ -x <= 1
         DBM::close(&mut dbm);
         assert_eq!(DBM::consistent(&dbm), true); // While this means that the zone is behind the x-axis which violates our implicit constraint that clocks are non-negative, it doesn't make it inconsistent, as we can tighten the bound.
@@ -668,7 +668,7 @@ pub mod dbm {
         let clocks = vec!["c1", "c2", "c3", "c4"];
         let mut dbm = DBM::<i32, &str>::new(clocks);
         let dimsize = dbm.get_dimsize();
-        let mut val = dbm.matrix.get_mut(dimsize).unwrap(); //get mutable reference to the value in (1, 0). (we use dimsize to skip the first row)
+        let val = dbm.matrix.get_mut(dimsize).unwrap(); //get mutable reference to the value in (1, 0). (we use dimsize to skip the first row)
         *val = -1; //set (1, 0) to be -1, meaning that 0-x <= -1 ~ -x <= -1
         DBM::close(&mut dbm);
         assert_eq!(DBM::consistent(&dbm), false); //As the corresponding bound in (0, 1) is (0 <=), this would mean that the intersection between the bounds is Ø (empty), as no x is both smaller than 0 and greater than 1/ !!Inconsistent
@@ -678,7 +678,7 @@ pub mod dbm {
     fn dbm_consistency_test5() {
         let clocks = vec!["c1", "c2", "c3", "c4"];
         let mut dbm = DBM::<i32, &str>::new(clocks);
-        let mut val = dbm.matrix.get_mut(1).unwrap(); //get mutable reference to the value in (0, 1)
+        let val = dbm.matrix.get_mut(1).unwrap(); //get mutable reference to the value in (0, 1)
         *val = -1;
         DBM::close(&mut dbm);
         assert_eq!(DBM::consistent(&dbm), false); // Same deal as in consistency test 4, the bounds are flipped. No x that is smaller than -1 and greater than 0 => inconsistent DBM
@@ -687,9 +687,9 @@ pub mod dbm {
     #[test]
     fn dbm_relation_test1() {
         let clocks = vec!["c1", "c2", "c3", "c4"];
-        let mut dbm_le = DBM::<i32, &str>::new(clocks.to_owned());
+        let dbm_le = DBM::<i32, &str>::new(clocks.to_owned());
         let mut dbm_gt = DBM::<i32, &str>::new(clocks);
-        let mut val = dbm_gt.matrix.get_mut(1).unwrap(); //get mutable reference to the value in (0, 1)
+        let val = dbm_gt.matrix.get_mut(1).unwrap(); //get mutable reference to the value in (0, 1)
         *val = 1; //set (0, 1) to be 1. dbm_gt should now be greater than dbm_le
         assert_eq!(DBM::relation(&dbm_le, &dbm_gt), true);
         assert_eq!(DBM::relation(&dbm_gt, &dbm_le), false);
@@ -698,8 +698,8 @@ pub mod dbm {
     #[test]
     fn dbm_relation_test2() {
         let clocks = vec!["c1", "c2", "c3", "c4"];
-        let mut dbm_le = DBM::<i32, &str>::new(clocks.to_owned());
-        let mut dbm_gte = DBM::<i32, &str>::new(clocks);
+        let dbm_le = DBM::<i32, &str>::new(clocks.to_owned());
+        let dbm_gte = DBM::<i32, &str>::new(clocks);
         assert_eq!(DBM::relation(&dbm_le, &dbm_gte), true); //now they are equal
         assert_eq!(DBM::relation(&dbm_gte, &dbm_le), true); //both checks should run
     }
@@ -709,8 +709,8 @@ pub mod dbm {
         let clocks = vec!["c1", "c2", "c3", "c4"];
         let mut dbm_le = DBM::<i32, &str>::new(clocks.to_owned());
         let mut dbm_gte = DBM::<i32, &str>::new(clocks);
-        let mut val_gte = dbm_gte.matrix.get_mut(1).unwrap();
-        let mut val_lte = dbm_le.matrix.get_mut(1).unwrap();
+        let val_gte = dbm_gte.matrix.get_mut(1).unwrap();
+        let val_lte = dbm_le.matrix.get_mut(1).unwrap();
         *val_gte = 1;
         *val_lte = 1;
         assert_eq!(DBM::relation(&dbm_le, &dbm_gte), true); //they are still equal
@@ -723,8 +723,8 @@ pub mod dbm {
         let smol_clocks = vec!["c1", "c2", "c3"];
         let mut dbm_le = DBM::<i32, &str>::new(smol_clocks);
         let mut dbm_gte = DBM::<i32, &str>::new(clocks);
-        let mut val_gte = dbm_gte.matrix.get_mut(1).unwrap();
-        let mut val_lte = dbm_le.matrix.get_mut(1).unwrap();
+        let val_gte = dbm_gte.matrix.get_mut(1).unwrap();
+        let val_lte = dbm_le.matrix.get_mut(1).unwrap();
         *val_gte = 1;
         *val_lte = 1;
         assert_eq!(DBM::relation(&dbm_le, &dbm_gte), false); //values are equal
@@ -734,9 +734,9 @@ pub mod dbm {
     #[test]
     fn dbm_relation_test5() {
         let clocks = vec!["c1", "c2", "c3", "c4"];
-        let mut dbm_le = DBM::<i32, &str>::new(clocks.to_owned());
+        let dbm_le = DBM::<i32, &str>::new(clocks.to_owned());
         let mut dbm_gte = DBM::<i32, &str>::new(clocks);
-        dbm_gte.set_bitval(0, 1, true);
+        dbm_gte.set_bitval(0, 1, true).unwrap();
         assert_eq!(DBM::relation(&dbm_le, &dbm_gte), true); //bound on gte(0, 1) is greater
         assert_eq!(DBM::relation(&dbm_gte, &dbm_le), false); //so le is related to gte, but gte isn't related to le
     }
