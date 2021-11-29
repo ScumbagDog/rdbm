@@ -481,6 +481,23 @@ pub mod dbm {
                 Ok(())
             }
         }
+
+        pub fn normalise(dbm: &mut DBM<T>, upper: T, lower: T) -> Result<(), ()> {
+            let upper_bound = Bound{boundval: upper, constraint_op: LessThanEqual};
+            let lower_bound = Bound{boundval: -lower, constraint_op: LessThanEqual};
+            for i in 0..dbm.get_dimsize() {
+                for j in 0..dbm.get_dimsize() {
+                    let local_bound = dbm.get_bound(i, j).unwrap();
+                    if local_bound < Bound::max_value() && local_bound > upper_bound {
+                        dbm.set_bound(i, j, Bound::max_value())?;
+                    }
+                    else if local_bound < Bound::max_value() && local_bound < lower_bound {
+                        dbm.set_bound(i, j, lower_bound.clone())?;
+                    }
+                }
+            }
+            Ok(())
+        }
     }
 
     impl<T: fmt::Display> fmt::Display for DBM<T> {
