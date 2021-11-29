@@ -179,6 +179,10 @@ pub mod dbm {
             self.ops
                 .set_bit((row * self.get_dimsize() + col) as u32, val)
         }
+
+        fn get_clock_index(&self, clock: u8) -> Option<usize> {
+            self.clock_names.iter().position(|c| c == &clock)
+        }
     }
 
     impl<
@@ -264,16 +268,20 @@ pub mod dbm {
 
         pub fn satisfied(
             dbm: &DBM<T>,
-            row: u8,
-            col: u8,
+            row_name: u8,
+            col_name: u8,
             op: ConstraintOp,
             val: T,
         ) -> Result<bool, ()> {
             //Should be called after close
-            if row as usize >= dbm.get_dimsize() || col as usize >= dbm.get_dimsize() {
+            let row_opt = dbm.get_clock_index(row_name);
+            let col_opt = dbm.get_clock_index(col_name);
+            if row_opt == None || col_opt == None {
                 Err(())
             } else {
-                let local_bound = dbm.get_bound(row.into(), col.into()).unwrap(); //into usize type, as get_bound doesn't take u8s
+                let row = row_opt.unwrap();
+                let col = col_opt.unwrap();
+                let local_bound = dbm.get_bound(row, col).unwrap(); //into usize type, as get_bound doesn't take u8s
                 let new_bound = Bound {
                     boundval: val,
                     constraint_op: op,
@@ -333,15 +341,17 @@ pub mod dbm {
         }
 
         pub fn free(dbm: &mut DBM<T>, clock_to_free: u8) -> Result<(), ()> {
-            if clock_to_free as usize >= dbm.get_dimsize() {
+            let clock_opt = dbm.get_clock_index(clock_to_free);
+            if clock_opt == None {
                 Err(())
             } else {
+                let clock_index = clock_opt.unwrap();
                 let inf_bound: Bound<T> = Bound::get_infinite_bound();
                 for i in 1..dbm.get_dimsize() {
-                    if i != clock_to_free as usize {
+                    if i != clock_index {
                         let i0_bound = dbm.get_bound(i, 0).unwrap();
-                        dbm.set_bound(clock_to_free.into(), i, inf_bound.clone())?;
-                        dbm.set_bound(i, clock_to_free.into(), i0_bound)?;
+                        dbm.set_bound(clock_index, i, inf_bound.clone())?;
+                        dbm.set_bound(i, clock_index, i0_bound)?;
                     }
                 }
                 Ok(())
@@ -349,9 +359,11 @@ pub mod dbm {
         }
 
         pub fn reset(dbm: &mut DBM<T>, clock_to_reset: u8, reset_val: T) -> Result<(), ()> {
-            if clock_to_reset as usize >= dbm.get_dimsize() {
+            let clock_opt = dbm.get_clock_index(clock_to_reset);
+            if clock_opt == None {
                 Err(())
             } else {
+                let clock_index = clock_opt.unwrap();
                 for i in 0..dbm.get_dimsize() {
                     let zero_i_bound = dbm.get_bound(0, i).unwrap();
                     let i_zero_bound = dbm.get_bound(i, 0).unwrap();
@@ -363,20 +375,21 @@ pub mod dbm {
                         boundval: -reset_val.clone(),
                         constraint_op: LessThanEqual,
                     };
-                    dbm.set_bound(clock_to_reset.into(), i, positive_bound + zero_i_bound)?;
-                    dbm.set_bound(i, clock_to_reset.into(), i_zero_bound + negative_bound)?;
+                    dbm.set_bound(clock_index, i, positive_bound + zero_i_bound)?;
+                    dbm.set_bound(i, clock_index, i_zero_bound + negative_bound)?;
                 }
                 Ok(())
             }
         }
 
         pub fn copy(dbm: &mut DBM<T>, clock_target: u8, clock_src: u8) -> Result<(), ()> {
-            if clock_target as usize >= dbm.get_dimsize() || clock_src as usize >= dbm.get_dimsize()
-            {
+            let target_opt = dbm.get_clock_index(clock_target);
+            let src_opt = dbm.get_clock_index(clock_src);
+            if target_opt == None || src_opt == None {
                 Err(())
             } else {
-                let target_index = clock_target.into();
-                let src_index = clock_src.into();
+                let target_index = target_opt.unwrap();
+                let src_index = src_opt.unwrap();
                 for i in 0..dbm.get_dimsize() {
                     if i != target_index {
                         dbm.set_bound(target_index, i, dbm.get_bound(src_index, i).unwrap())?;
@@ -398,11 +411,13 @@ pub mod dbm {
             constant: T,
         ) -> Result<(), ()> {
             //Constraint is a tuple over T and ConstraintOP, as this mimicks the notation in Timed Automata: Semantics, Algorithms and Tools by Bengtsson and Yi
-            if row_clock as usize >= dbm.get_dimsize() || col_clock as usize >= dbm.get_dimsize() {
+            let row_opt = dbm.get_clock_index(row_clock);
+            let col_opt = dbm.get_clock_index(col_clock);
+            if row_opt == None || col_opt == None {
                 Err(())
             } else {
-                let row_index = row_clock.into();
-                let col_index = col_clock.into();
+                let row_index = row_opt.unwrap();
+                let col_index = col_opt.unwrap();
                 let local_bound = dbm.get_bound(col_index, row_index).unwrap(); //the bound in (y,x)
                 let and_bound = Bound {
                     boundval: constant,
@@ -442,10 +457,11 @@ pub mod dbm {
         }
 
         pub fn shift(dbm: &mut DBM<T>, clock: u8, delta_val: T) -> Result<(), ()> {
-            if clock as usize >= dbm.get_dimsize() {
+            let clock_opt = dbm.get_clock_index(clock);
+            if clock_opt == None {
                 Err(())
             } else {
-                let clock_index = clock.into();
+                let clock_index = clock_opt.unwrap();
                 let local_bound = Bound {
                     boundval: delta_val,
                     constraint_op: LessThanEqual,
@@ -483,15 +499,20 @@ pub mod dbm {
         }
 
         pub fn normalise(dbm: &mut DBM<T>, upper: T, lower: T) -> Result<(), ()> {
-            let upper_bound = Bound{boundval: upper, constraint_op: LessThanEqual};
-            let lower_bound = Bound{boundval: -lower, constraint_op: LessThanEqual};
+            let upper_bound = Bound {
+                boundval: upper,
+                constraint_op: LessThanEqual,
+            };
+            let lower_bound = Bound {
+                boundval: -lower,
+                constraint_op: LessThanEqual,
+            };
             for i in 0..dbm.get_dimsize() {
                 for j in 0..dbm.get_dimsize() {
                     let local_bound = dbm.get_bound(i, j).unwrap();
                     if local_bound < Bound::max_value() && local_bound > upper_bound {
                         dbm.set_bound(i, j, Bound::max_value())?;
-                    }
-                    else if local_bound < Bound::max_value() && local_bound < lower_bound {
+                    } else if local_bound < Bound::max_value() && local_bound < lower_bound {
                         dbm.set_bound(i, j, lower_bound.clone())?;
                     }
                 }
@@ -639,7 +660,7 @@ pub mod dbm {
         let dbm = DBM::<i32>::new(clocks);
         assert_eq!(
             dbm.get_dimsize() * dbm.get_dimsize(),
-            dbm.ops.get_length() as usize
+            dbm.ops.length as usize
         );
     }
 

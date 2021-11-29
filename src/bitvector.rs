@@ -1,6 +1,6 @@
 pub struct Bitvector {
-    bits: Vec<u8>,
-    length: u32,
+    pub bits: Vec<u8>,
+    pub length: u32,
 }
 
 pub struct BitvectorIterator<'a> {
@@ -17,7 +17,8 @@ impl Bitvector {
         }
     }
 
-    pub fn init_with_length(length: u32) -> Bitvector { //Normally, we would use usize here, but as length refers to amount of bits and not bytes, the benefit is diminished.
+    pub fn init_with_length(length: u32) -> Bitvector {
+        //Normally, we would use usize here, but as length refers to amount of bits and not bytes, the benefit is diminished.
         let mut bvec = Bitvector::init();
         bvec.set_length(length);
         bvec
@@ -60,7 +61,10 @@ impl Bitvector {
 
     pub fn set_length(&mut self, new_length: u32) {
         self.length = new_length;
-        self.bits.resize_with(((new_length / 8) + (new_length % 8 != 0) as u32) as usize, Default::default);
+        self.bits.resize_with(
+            ((new_length / 8) + (new_length % 8 != 0) as u32) as usize,
+            Default::default,
+        );
     }
 
     pub fn get_bits_as_vec(&self) -> Vec<bool> {
@@ -77,11 +81,9 @@ impl Bitvector {
             current_index: 0,
         }
     }
-
 }
 
 impl Iterator for BitvectorIterator<'_> {
-
     type Item = bool;
     fn next(&mut self) -> std::option::Option<<Self as std::iter::Iterator>::Item> {
         let next_val = self.bitvec.get_bit(self.current_index);
