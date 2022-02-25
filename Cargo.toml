@@ -8,6 +8,6 @@ edition = "2018"
 num = "0.4"
 
 [lib]
-name = "dbm"
+name = "rdbm"
 crate-type = ["lib"]
 bench = false
