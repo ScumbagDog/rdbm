@@ -1,4 +1,4 @@
-pub mod dbm {
+pub mod rdbm {
     /*
      * This is an implementation of a DBM.
      * The matrix is declared as a single array, as this guarantees a single, coherent block of memory, rather than having all the rows spread around in the heap.
@@ -7,7 +7,7 @@ pub mod dbm {
      */
 
     use crate::bitvector::Bitvector;
-    use crate::dbm::dbm::ConstraintOp::{LessThan, LessThanEqual};
+    use crate::rdbm::rdbm::ConstraintOp::{LessThan, LessThanEqual};
     use num::Bounded;
     use num::Zero;
     use std::fmt;
