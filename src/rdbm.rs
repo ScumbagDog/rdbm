@@ -274,7 +274,7 @@ impl<
             .fold(true, |acc, e| acc && e)
     }
 
-    pub fn relation(first: &DBM<T>, second: &DBM<T>) -> bool {
+    pub fn is_included_in(first: &DBM<T>, second: &DBM<T>) -> bool {
         //I considered doing this as a method, but I ultimately decided to do it as a normal function, as it looks somewhat nicer
         first.get_dimsize() == second.get_dimsize() && {
             //dimension check for short circuit and iterator size later.
@@ -783,27 +783,27 @@ fn dbm_consistency_test5() {
 }
 
 #[test]
-fn dbm_relation_test1() {
+fn dbm_inclusion_test1() {
     let clocks = vec![1, 2, 3, 4];
     let dbm_le = DBM::<i32>::zero(clocks.to_owned());
     let mut dbm_gt = DBM::<i32>::zero(clocks);
     let val = dbm_gt.matrix.get_mut(1).unwrap(); //get mutable reference to the value in (0, 1)
     *val = 1; //set (0, 1) to be 1. dbm_gt should now be greater than dbm_le
-    assert_eq!(DBM::relation(&dbm_le, &dbm_gt), true);
-    assert_eq!(DBM::relation(&dbm_gt, &dbm_le), false);
+    assert_eq!(DBM::is_included_in(&dbm_le, &dbm_gt), true);
+    assert_eq!(DBM::is_included_in(&dbm_gt, &dbm_le), false);
 }
 
 #[test]
-fn dbm_relation_test2() {
+fn dbm_inclusion_test2() {
     let clocks = vec![1, 2, 3, 4];
     let dbm_le = DBM::<i32>::zero(clocks.to_owned());
     let dbm_gte = DBM::<i32>::zero(clocks);
-    assert_eq!(DBM::relation(&dbm_le, &dbm_gte), true); //now they are equal
-    assert_eq!(DBM::relation(&dbm_gte, &dbm_le), true); //both checks should run
+    assert_eq!(DBM::is_included_in(&dbm_le, &dbm_gte), true); //now they are equal
+    assert_eq!(DBM::is_included_in(&dbm_gte, &dbm_le), true); //both checks should run
 }
 
 #[test]
-fn dbm_relation_test3() {
+fn dbm_inclusion_test3() {
     let clocks = vec![1, 2, 3, 4];
     let mut dbm_le = DBM::<i32>::zero(clocks.to_owned());
     let mut dbm_gte = DBM::<i32>::zero(clocks);
@@ -811,12 +811,12 @@ fn dbm_relation_test3() {
     let val_lte = dbm_le.matrix.get_mut(1).unwrap();
     *val_gte = 1;
     *val_lte = 1;
-    assert_eq!(DBM::relation(&dbm_le, &dbm_gte), true); //they are still equal
-    assert_eq!(DBM::relation(&dbm_gte, &dbm_le), true); //So both should return true
+    assert_eq!(DBM::is_included_in(&dbm_le, &dbm_gte), true); //they are still equal
+    assert_eq!(DBM::is_included_in(&dbm_gte, &dbm_le), true); //So both should return true
 }
 
 #[test]
-fn dbm_relation_test4() {
+fn dbm_inclusion_test4() {
     let clocks = vec![1, 2, 3, 4];
     let smol_clocks = vec![1, 2, 3];
     let mut dbm_le = DBM::<i32>::zero(smol_clocks);
@@ -825,18 +825,18 @@ fn dbm_relation_test4() {
     let val_lte = dbm_le.matrix.get_mut(1).unwrap();
     *val_gte = 1;
     *val_lte = 1;
-    assert_eq!(DBM::relation(&dbm_le, &dbm_gte), false); //values are equal
-    assert_eq!(DBM::relation(&dbm_gte, &dbm_le), false); //but dimensions are different, so return false
+    assert_eq!(DBM::is_included_in(&dbm_le, &dbm_gte), false); //values are equal
+    assert_eq!(DBM::is_included_in(&dbm_gte, &dbm_le), false); //but dimensions are different, so return false
 }
 
 #[test]
-fn dbm_relation_test5() {
+fn dbm_inclusion_test5() {
     let clocks = vec![1, 2, 3, 4];
     let dbm_le = DBM::<i32>::zero(clocks.to_owned());
     let mut dbm_gte = DBM::<i32>::zero(clocks);
     dbm_gte.set_bitval(0, 1, true).unwrap();
-    assert_eq!(DBM::relation(&dbm_le, &dbm_gte), true); //bound on gte(0, 1) is greater
-    assert_eq!(DBM::relation(&dbm_gte, &dbm_le), false); //so le is related to gte, but gte isn't related to le
+    assert_eq!(DBM::is_included_in(&dbm_le, &dbm_gte), true); //bound on gte(0, 1) is greater
+    assert_eq!(DBM::is_included_in(&dbm_gte, &dbm_le), false); //so le is related to gte, but gte isn't related to le
 }
 
 #[test]
