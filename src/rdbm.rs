@@ -194,7 +194,7 @@ impl<
             + std::ops::Neg<Output = T>, //For all T's that implement the following traits
     > DBM<T>
 {
-    pub fn new(mut clocks: Vec<u8>) -> DBM<T> {
+    pub fn zero(mut clocks: Vec<u8>) -> DBM<T> {
         //Intentionally doesn't take a reference, as we would like the names to be owned by the data structure
         clocks.insert(0, Default::default());
         let bitvector = Bitvector::init_with_length((clocks.len() * clocks.len()) as u32);
@@ -206,6 +206,26 @@ impl<
             clock_names: clocks,
             ops: bitvector,
         }
+    }
+
+    pub fn new(mut clocks: Vec<u8>) -> DBM<T> {
+        clocks.insert(0, Default::default());
+        let dim = clocks.len();
+        let matrix_size = dim * dim;
+        let bitvector = Bitvector::init_with_length(matrix_size as u32);
+        let mut matrix: Vec<T> = Vec::new();
+        matrix.resize_with(matrix_size, Bounded::max_value);
+        let mut dbm = Self {
+            matrix: matrix,
+            clock_names: clocks,
+            ops: bitvector,
+        };
+        let zero_val = T::zero();
+        for i in 0..dim {
+            let _opt_val = dbm.set_element(0, i, zero_val.clone());
+            let _opt_val_2 =dbm.set_element(i, i, zero_val.clone());
+        }
+        dbm
     }
 
     fn get_bound(&self, row: usize, col: usize) -> Option<Bound<T>> {
@@ -632,7 +652,7 @@ fn bound_le_test3() {
 #[test]
 fn dbm_index_test1() {
     let clocks = vec![1, 2, 3, 4];
-    let dbm = DBM::<i32>::new(clocks);
+    let dbm = DBM::<i32>::zero(clocks);
     let elem = *dbm.get_element(0, 0).unwrap();
     assert_eq!(elem, 0);
 }
@@ -640,7 +660,7 @@ fn dbm_index_test1() {
 #[test]
 fn dbm_index_test2() {
     let clocks = vec![1, 2, 3, 4];
-    let dbm = DBM::<i32>::new(clocks);
+    let dbm = DBM::<i32>::zero(clocks);
     let elem = *dbm.get_element(2, 3).unwrap();
     assert_eq!(elem, 0);
 }
@@ -648,7 +668,7 @@ fn dbm_index_test2() {
 #[test]
 fn dbm_index_test3() {
     let clocks = vec![1, 2, 3, 4];
-    let dbm = DBM::<i32>::new(clocks);
+    let dbm = DBM::<i32>::zero(clocks);
     let elem = *dbm.get_element(3, 1).unwrap();
     assert_eq!(elem, 0);
 }
@@ -656,7 +676,7 @@ fn dbm_index_test3() {
 #[test]
 fn dbm_bit_consistency_test1() {
     let clocks = vec![1, 2, 3, 4];
-    let dbm = DBM::<i32>::new(clocks);
+    let dbm = DBM::<i32>::zero(clocks);
     assert_eq!(
         dbm.get_dimsize() * dbm.get_dimsize(),
         dbm.ops.length as usize
@@ -666,7 +686,7 @@ fn dbm_bit_consistency_test1() {
 #[test]
 fn dbm_index_test_bad_index1() {
     let clocks = vec![1, 2, 3, 4];
-    let dbm = DBM::<i32>::new(clocks);
+    let dbm = DBM::<i32>::zero(clocks);
     let elem = dbm.get_element(5, 0);
     assert_eq!(elem, None);
 }
@@ -674,7 +694,7 @@ fn dbm_index_test_bad_index1() {
 #[test]
 fn dbm_index_test_bad_index2() {
     let clocks = vec![1, 2, 3, 4];
-    let dbm = DBM::<i32>::new(clocks);
+    let dbm = DBM::<i32>::zero(clocks);
     let elem = dbm.get_element(0, 5);
     assert_eq!(elem, None);
 }
@@ -682,7 +702,7 @@ fn dbm_index_test_bad_index2() {
 #[test]
 fn dbm_index_test_bad_index3() {
     let clocks = vec![1, 2, 3, 4];
-    let dbm = DBM::<i32>::new(clocks);
+    let dbm = DBM::<i32>::zero(clocks);
     let elem = dbm.get_element(5, 5);
     assert_eq!(elem, None);
 }
@@ -690,7 +710,7 @@ fn dbm_index_test_bad_index3() {
 #[test]
 fn dbm_index_test_empty_dbm() {
     let clocks = vec![];
-    let dbm = DBM::<i32>::new(clocks);
+    let dbm = DBM::<i32>::zero(clocks);
     let elem = *dbm.get_element(0, 0).unwrap();
     assert_eq!(elem, 0);
 }
@@ -698,7 +718,7 @@ fn dbm_index_test_empty_dbm() {
 #[test]
 fn dbm_bound_test1() {
     let clocks = vec![1, 2, 3, 4];
-    let mut dbm = DBM::<i32>::new(clocks);
+    let mut dbm = DBM::<i32>::zero(clocks);
     dbm.set_bitval(0, 1, true).unwrap();
     let elem = dbm.matrix.get_mut(1).unwrap();
     *elem = 4;
@@ -715,7 +735,7 @@ fn dbm_bound_test1() {
 #[test]
 fn dbm_consistency_test1() {
     let clocks = vec![1, 2, 3, 4];
-    let mut dbm = DBM::<i32>::new(clocks);
+    let mut dbm = DBM::<i32>::zero(clocks);
     DBM::close(&mut dbm);
     assert_eq!(DBM::consistent(&dbm), true); //a dbm filled with (0, lte) should be consistent
 }
@@ -723,7 +743,7 @@ fn dbm_consistency_test1() {
 #[test]
 fn dbm_consistency_test2() {
     let clocks = vec![1, 2, 3, 4];
-    let mut dbm = DBM::<i32>::new(clocks);
+    let mut dbm = DBM::<i32>::zero(clocks);
     let val = dbm.matrix.get_mut(1).unwrap(); //get mutable reference to the value in (0, 1)
     *val = 1; //set (0, 1) to be 1
     DBM::close(&mut dbm);
@@ -733,7 +753,7 @@ fn dbm_consistency_test2() {
 #[test]
 fn dbm_consistency_test3() {
     let clocks = vec![1, 2, 3, 4];
-    let mut dbm = DBM::<i32>::new(clocks);
+    let mut dbm = DBM::<i32>::zero(clocks);
     let dimsize = dbm.get_dimsize();
     let val = dbm.matrix.get_mut(dimsize).unwrap(); //get mutable reference to the value in (1, 0). (we use dimsize to skip the first row)
     *val = 1; //set (1, 0) to be 1, meaning that 0-x <= 1 ~ -x <= 1
@@ -744,7 +764,7 @@ fn dbm_consistency_test3() {
 #[test]
 fn dbm_consistency_test4() {
     let clocks = vec![1, 2, 3, 4];
-    let mut dbm = DBM::<i32>::new(clocks);
+    let mut dbm = DBM::<i32>::zero(clocks);
     let dimsize = dbm.get_dimsize();
     let val = dbm.matrix.get_mut(dimsize).unwrap(); //get mutable reference to the value in (1, 0). (we use dimsize to skip the first row)
     *val = -1; //set (1, 0) to be -1, meaning that 0-x <= -1 ~ -x <= -1
@@ -755,7 +775,7 @@ fn dbm_consistency_test4() {
 #[test]
 fn dbm_consistency_test5() {
     let clocks = vec![1, 2, 3, 4];
-    let mut dbm = DBM::<i32>::new(clocks);
+    let mut dbm = DBM::<i32>::zero(clocks);
     let val = dbm.matrix.get_mut(1).unwrap(); //get mutable reference to the value in (0, 1)
     *val = -1;
     DBM::close(&mut dbm);
@@ -765,8 +785,8 @@ fn dbm_consistency_test5() {
 #[test]
 fn dbm_relation_test1() {
     let clocks = vec![1, 2, 3, 4];
-    let dbm_le = DBM::<i32>::new(clocks.to_owned());
-    let mut dbm_gt = DBM::<i32>::new(clocks);
+    let dbm_le = DBM::<i32>::zero(clocks.to_owned());
+    let mut dbm_gt = DBM::<i32>::zero(clocks);
     let val = dbm_gt.matrix.get_mut(1).unwrap(); //get mutable reference to the value in (0, 1)
     *val = 1; //set (0, 1) to be 1. dbm_gt should now be greater than dbm_le
     assert_eq!(DBM::relation(&dbm_le, &dbm_gt), true);
@@ -776,8 +796,8 @@ fn dbm_relation_test1() {
 #[test]
 fn dbm_relation_test2() {
     let clocks = vec![1, 2, 3, 4];
-    let dbm_le = DBM::<i32>::new(clocks.to_owned());
-    let dbm_gte = DBM::<i32>::new(clocks);
+    let dbm_le = DBM::<i32>::zero(clocks.to_owned());
+    let dbm_gte = DBM::<i32>::zero(clocks);
     assert_eq!(DBM::relation(&dbm_le, &dbm_gte), true); //now they are equal
     assert_eq!(DBM::relation(&dbm_gte, &dbm_le), true); //both checks should run
 }
@@ -785,8 +805,8 @@ fn dbm_relation_test2() {
 #[test]
 fn dbm_relation_test3() {
     let clocks = vec![1, 2, 3, 4];
-    let mut dbm_le = DBM::<i32>::new(clocks.to_owned());
-    let mut dbm_gte = DBM::<i32>::new(clocks);
+    let mut dbm_le = DBM::<i32>::zero(clocks.to_owned());
+    let mut dbm_gte = DBM::<i32>::zero(clocks);
     let val_gte = dbm_gte.matrix.get_mut(1).unwrap();
     let val_lte = dbm_le.matrix.get_mut(1).unwrap();
     *val_gte = 1;
@@ -799,8 +819,8 @@ fn dbm_relation_test3() {
 fn dbm_relation_test4() {
     let clocks = vec![1, 2, 3, 4];
     let smol_clocks = vec![1, 2, 3];
-    let mut dbm_le = DBM::<i32>::new(smol_clocks);
-    let mut dbm_gte = DBM::<i32>::new(clocks);
+    let mut dbm_le = DBM::<i32>::zero(smol_clocks);
+    let mut dbm_gte = DBM::<i32>::zero(clocks);
     let val_gte = dbm_gte.matrix.get_mut(1).unwrap();
     let val_lte = dbm_le.matrix.get_mut(1).unwrap();
     *val_gte = 1;
@@ -812,8 +832,8 @@ fn dbm_relation_test4() {
 #[test]
 fn dbm_relation_test5() {
     let clocks = vec![1, 2, 3, 4];
-    let dbm_le = DBM::<i32>::new(clocks.to_owned());
-    let mut dbm_gte = DBM::<i32>::new(clocks);
+    let dbm_le = DBM::<i32>::zero(clocks.to_owned());
+    let mut dbm_gte = DBM::<i32>::zero(clocks);
     dbm_gte.set_bitval(0, 1, true).unwrap();
     assert_eq!(DBM::relation(&dbm_le, &dbm_gte), true); //bound on gte(0, 1) is greater
     assert_eq!(DBM::relation(&dbm_gte, &dbm_le), false); //so le is related to gte, but gte isn't related to le
@@ -829,6 +849,6 @@ fn dbm_print_test() {
     let line4 = "|(0, ≤), (0, ≤), (0, ≤), (0, ≤), (0, ≤)|\n";
     let line5 = "|(0, ≤), (0, ≤), (0, ≤), (0, ≤), (0, ≤)|\n";
     let printed_vec = String::new() + line1 + line2 + line3 + line4 + line5; //so to concatenate, we need an owned string (String) to concat into.
-    let dbm = DBM::<i32>::new(clocks);
+    let dbm = DBM::<i32>::zero(clocks);
     assert_eq!(format!("{}", dbm), printed_vec);
 }
