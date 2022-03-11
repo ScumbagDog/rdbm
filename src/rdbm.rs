@@ -223,7 +223,7 @@ impl<
         let zero_val = T::zero();
         for i in 0..dim {
             let _opt_val = dbm.set_element(0, i, zero_val.clone());
-            let _opt_val_2 =dbm.set_element(i, i, zero_val.clone());
+            let _opt_val_2 = dbm.set_element(i, i, zero_val.clone());
         }
         dbm
     }
