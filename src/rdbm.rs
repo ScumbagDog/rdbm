@@ -289,7 +289,7 @@ impl<
         dbm: &DBM<T>,
         row_name: u8,
         col_name: u8,
-        bound_is_lt: bool,
+        op: ConstraintOp,
         val: T,
     ) -> Result<bool, ()> {
         //Should be called after close
@@ -303,7 +303,7 @@ impl<
             let local_bound = dbm.get_bound(row, col).unwrap(); //into usize type, as get_bound doesn't take u8s
             let new_bound = Bound {
                 boundval: val,
-                constraint_op: bound_is_lt.into(),
+                constraint_op: op,
             };
             let default_bound: Bound<T> = Default::default();
             Ok((local_bound + new_bound) < default_bound)
