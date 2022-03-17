@@ -1,3 +1,4 @@
+#[derive(Debug, PartialEq)]
 pub struct Bitvector {
     pub bits: Vec<u8>,
     pub length: u32,

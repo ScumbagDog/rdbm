@@ -12,6 +12,7 @@ use num::Zero;
 use std::fmt;
 use std::ops::Add;
 
+#[derive(Debug, PartialEq)]
 pub struct DBM<T> {
     matrix: Vec<T>,
     clock_names: Vec<u8>,
@@ -305,8 +306,8 @@ impl<
                 boundval: val,
                 constraint_op: op,
             };
-            let default_bound: Bound<T> = Default::default();
-            Ok((local_bound + new_bound) < default_bound)
+            let zero_bound: Bound<T> = num::Zero::zero();
+            Ok((local_bound + new_bound) < zero_bound)
         }
     }
 
