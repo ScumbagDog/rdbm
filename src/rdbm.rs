@@ -86,11 +86,11 @@ impl<T: std::fmt::Display> fmt::Display for Bound<T> {
     }
 }
 
-impl<T: std::ops::Add<Output = T>> Add for Bound<T> {
+impl<T: num::Saturating + std::ops::Add<Output = T>> Add for Bound<T> {
     type Output = Self;
     fn add(self, rhs: Self) -> <Self as std::ops::Add<Self>>::Output {
         Bound {
-            boundval: self.boundval + rhs.boundval,
+            boundval: self.boundval.saturating_add(rhs.boundval),
             constraint_op: self.constraint_op + rhs.constraint_op,
         }
     }
@@ -121,7 +121,7 @@ impl<T: Bounded> Bounded for Bound<T> {
     }
 }
 
-impl<T: Zero + PartialEq> Zero for Bound<T> {
+impl<T: Zero + PartialEq + num::Saturating> Zero for Bound<T> {
     fn zero() -> Self {
         Bound {
             boundval: num::zero(),
@@ -142,6 +142,7 @@ impl<T: std::cmp::PartialEq + num::Bounded> Bound<T> {
         }
     }
 }
+
 impl<T> DBM<T> {
     //This impl is without traits, which allows us to print without satisfying all the other traits we don't need anyway (because the dimsize function now has a traitless-impl)
 
@@ -186,22 +187,22 @@ impl<T> DBM<T> {
 }
 
 impl<
-        T: std::default::Default
-            + std::cmp::Ord
+        T: std::cmp::Ord
             + Clone
             + std::ops::Add<Output = T>
             + num::Bounded
             + num::Zero
+            + num::Saturating
             + std::ops::Neg<Output = T>, //For all T's that implement the following traits
     > DBM<T>
 {
     pub fn zero(mut clocks: Vec<u8>) -> DBM<T> {
         //Intentionally doesn't take a reference, as we would like the names to be owned by the data structure
-        clocks.insert(0, Default::default());
+        clocks.insert(0, Zero::zero());
         let bitvector = Bitvector::init_with_length((clocks.len() * clocks.len()) as u32);
         let matrix_size = clocks.len() * clocks.len();
         let mut matrix: Vec<T> = Vec::new();
-        matrix.resize_with(matrix_size, Default::default);
+        matrix.resize_with(matrix_size, Zero::zero);
         Self {
             matrix: matrix,
             clock_names: clocks,
@@ -210,7 +211,7 @@ impl<
     }
 
     pub fn new(mut clocks: Vec<u8>) -> DBM<T> {
-        clocks.insert(0, Default::default());
+        clocks.insert(0, Zero::zero());
         let dim = clocks.len();
         let matrix_size = dim * dim;
         let bitvector = Bitvector::init_with_length(matrix_size as u32);
@@ -271,7 +272,7 @@ impl<
         //should be run after the close function, as index (i, i) will be annotated there (or not, depending on whether there are negative cycles or not)
         //alternatively after another transformation, as it preserves the consistent status
         (0..dbm.get_dimsize())
-            .map(|c| dbm.get_bound(c, c).unwrap() == Default::default()) //could be optimized to short circuit early, but this is easier to implement and looks nicer, so ¯\_(ツ)_/¯
+            .map(|c| dbm.get_bound(c, c).unwrap() == Zero::zero()) //could be optimized to short circuit early, but this is easier to implement and looks nicer, so ¯\_(ツ)_/¯
             .fold(true, |acc, e| acc && e)
     }
 
