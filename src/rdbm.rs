@@ -282,8 +282,7 @@ impl<
             //dimension check for short circuit and iterator size later.
             let first_iter = first.get_bound_iter();
             let second_iter = second.get_bound_iter();
-            first_iter.le(second_iter) //check if every element in first_iter is less than or equal to its corresponding element in second_iter.
-                                       //Will return true even if first_iter has fewer elements than second_iter (so long as they are less than or equal to second_iter), so dimension check is still needed
+            first_iter.zip(second_iter).map(|(x, y)| -> bool {x <= y}).fold(true, |acc, x| -> bool {acc && x})
         }
     }
 
