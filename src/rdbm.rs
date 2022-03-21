@@ -842,6 +842,16 @@ fn dbm_inclusion_test5() {
 }
 
 #[test]
+fn test_reset_zero() {
+    let clocks = vec![1, 2, 3, 4];
+    let mut dbm: DBM<i8> = DBM::zero(clocks.to_owned());
+    let dbm2: DBM<i8> = DBM::zero(clocks);
+    DBM::reset(&mut dbm, 1, 10).unwrap(); //set clock 1 to a value of 10
+    assert_eq!(DBM::is_included_in(&dbm2, &dbm), false); //as dbm has clock 1 set to 10, it will not include the zero dbm
+    assert_eq!(DBM::is_included_in(&dbm, &dbm2), false); //likewise, the zero dbm does not include dbm
+}
+
+#[test]
 fn dbm_print_test() {
     let clocks = vec![1, 2, 3, 4];
     //lines declared seperately, as it makes it much nicer to look at
