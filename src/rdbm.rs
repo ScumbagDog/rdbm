@@ -96,7 +96,9 @@ impl<T: num::Saturating + std::ops::Add<Output = T>> Add for Bound<T> {
     }
 }
 
-impl<'a, 'b, T: num::Saturating + std::ops::Add<Output = T> + Clone> Add<&'b Bound<T>> for &'a Bound<T> {
+impl<'a, 'b, T: num::Saturating + std::ops::Add<Output = T> + Clone> Add<&'b Bound<T>>
+    for &'a Bound<T>
+{
     type Output = Bound<T>;
     fn add(self, rhs: &'b Bound<T>) -> Bound<T> {
         Bound {
@@ -441,7 +443,7 @@ impl<
         } else {
             let row_index = row_opt.unwrap();
             let col_index = col_opt.unwrap();
-            let local_bound = dbm.get_bound(col_index, row_index).unwrap(); //the bound in (y,x)
+            let local_bound = dbm.get_bound(row_index, col_index).unwrap(); //the bound in (y,x)
             let and_bound = Bound {
                 boundval: constant,
                 constraint_op: op,
@@ -457,7 +459,7 @@ impl<
                     },
                 )?; //We use min_value in place of a negative number, and then it is the user's responsibility to call it with a signed type (or a type where min<zero)
             } else if and_bound < local_bound {
-                dbm.set_bound(row_index, col_index, local_bound)?;
+                dbm.set_bound(row_index, col_index, and_bound)?;
                 for i in 0..dbm.get_dimsize() {
                     for j in 0..dbm.get_dimsize() {
                         let ix_bound = dbm.get_bound(i, row_index).unwrap();
@@ -657,14 +659,20 @@ fn bound_le_test3() {
 fn bound_add_overflowing() {
     let max_bound = Bound::<i8>::get_infinite_bound();
     let other_max_bound = max_bound.clone();
-    assert_eq!(max_bound + other_max_bound, Bound::<i8>::get_infinite_bound());
+    assert_eq!(
+        max_bound + other_max_bound,
+        Bound::<i8>::get_infinite_bound()
+    );
 }
 
 #[test]
 fn bound_reference_add_overflowing() {
     let max_bound = Bound::<i8>::get_infinite_bound();
     let other_max_bound = max_bound.clone();
-    assert_eq!(&max_bound + &other_max_bound, Bound::<i8>::get_infinite_bound());
+    assert_eq!(
+        &max_bound + &other_max_bound,
+        Bound::<i8>::get_infinite_bound()
+    );
 }
 
 #[test]
@@ -865,6 +873,16 @@ fn test_reset_zero() {
     DBM::reset(&mut dbm, 1, 10).unwrap(); //set clock 1 to a value of 10
     assert_eq!(DBM::is_included_in(&dbm2, &dbm), false); //as dbm has clock 1 set to 10, it will not include the zero dbm
     assert_eq!(DBM::is_included_in(&dbm, &dbm2), false); //likewise, the zero dbm does not include dbm
+}
+
+#[test]
+fn test_restrict() {
+    let dim: usize = 3;
+    let mut dbm: DBM<i8> = DBM::new((1..dim as u8).collect());
+    let dbm2 = dbm.clone();
+    DBM::and(&mut dbm, 1, 0, LessThanEqual, 10).unwrap();
+    assert_eq!(DBM::is_included_in(&dbm, &dbm2), true); //since dbm has been restricted, dbm2 should now include it, but not the other way around.
+    assert_eq!(DBM::is_included_in(&dbm2, &dbm), false);
 }
 
 #[test]
