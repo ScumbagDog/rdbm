@@ -96,11 +96,11 @@ impl<T: num::Saturating + std::ops::Add<Output = T>> Add for Bound<T> {
     }
 }
 
-impl<'a, 'b, T: std::ops::Add<Output = T> + Clone> Add<&'b Bound<T>> for &'a Bound<T> {
+impl<'a, 'b, T: num::Saturating + std::ops::Add<Output = T> + Clone> Add<&'b Bound<T>> for &'a Bound<T> {
     type Output = Bound<T>;
     fn add(self, rhs: &'b Bound<T>) -> Bound<T> {
         Bound {
-            boundval: self.boundval.clone() + rhs.boundval.clone(),
+            boundval: self.boundval.clone().saturating_add(rhs.boundval.clone()),
             constraint_op: self.constraint_op + rhs.constraint_op,
         }
     }
@@ -282,7 +282,10 @@ impl<
             //dimension check for short circuit and iterator size later.
             let first_iter = first.get_bound_iter();
             let second_iter = second.get_bound_iter();
-            first_iter.zip(second_iter).map(|(x, y)| -> bool {x <= y}).fold(true, |acc, x| -> bool {acc && x})
+            first_iter
+                .zip(second_iter)
+                .map(|(x, y)| -> bool { x <= y })
+                .fold(true, |acc, x| -> bool { acc && x })
         }
     }
 
@@ -443,7 +446,7 @@ impl<
                 boundval: constant,
                 constraint_op: op,
             };
-            if &local_bound + &and_bound < num::zero() {
+            if (&local_bound + &and_bound) < num::zero() {
                 //num zero means a zero-bound
                 dbm.set_bound(
                     0,
@@ -651,6 +654,20 @@ fn bound_le_test3() {
 }
 
 #[test]
+fn bound_add_overflowing() {
+    let max_bound = Bound::<i8>::get_infinite_bound();
+    let other_max_bound = max_bound.clone();
+    assert_eq!(max_bound + other_max_bound, Bound::<i8>::get_infinite_bound());
+}
+
+#[test]
+fn bound_reference_add_overflowing() {
+    let max_bound = Bound::<i8>::get_infinite_bound();
+    let other_max_bound = max_bound.clone();
+    assert_eq!(&max_bound + &other_max_bound, Bound::<i8>::get_infinite_bound());
+}
+
+#[test]
 fn dbm_index_test1() {
     let clocks = vec![1, 2, 3, 4];
     let dbm = DBM::<i32>::zero(clocks);
@@ -848,6 +865,24 @@ fn test_reset_zero() {
     DBM::reset(&mut dbm, 1, 10).unwrap(); //set clock 1 to a value of 10
     assert_eq!(DBM::is_included_in(&dbm2, &dbm), false); //as dbm has clock 1 set to 10, it will not include the zero dbm
     assert_eq!(DBM::is_included_in(&dbm, &dbm2), false); //likewise, the zero dbm does not include dbm
+}
+
+#[test]
+fn test_restrict_different_order() {
+    let dim: usize = 10;
+    let mut dbm: DBM<i8> = DBM::new((1..dim as u8).collect());
+    let mut dbm_reordered = dbm.clone();
+
+    DBM::and(&mut dbm_reordered, 1, 2, LessThanEqual, 10).unwrap();
+    DBM::and(&mut dbm_reordered, 1, 0, LessThanEqual, 15).unwrap();
+    DBM::and(&mut dbm_reordered, 2, 3, LessThanEqual, 20).unwrap();
+
+    DBM::and(&mut dbm, 2, 3, LessThanEqual, 20).unwrap();
+    DBM::and(&mut dbm, 1, 2, LessThanEqual, 10).unwrap();
+    DBM::and(&mut dbm, 1, 0, LessThanEqual, 15).unwrap();
+
+    assert_eq!(DBM::is_included_in(&dbm, &dbm_reordered), true); //order of restricts shouldn't matter for equality, dbms should be equal
+    assert_eq!(DBM::is_included_in(&dbm_reordered, &dbm), true);
 }
 
 #[test]
