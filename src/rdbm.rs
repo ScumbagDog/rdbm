@@ -12,7 +12,7 @@ use num::Zero;
 use std::fmt;
 use std::ops::Add;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct DBM<T> {
     matrix: Vec<T>,
     clock_names: Vec<u8>,
