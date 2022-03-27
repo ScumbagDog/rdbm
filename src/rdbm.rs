@@ -449,17 +449,7 @@ impl<
                 boundval: constant,
                 constraint_op: op,
             };
-            if (&local_bound + &and_bound) < num::zero() {
-                //num zero means a zero-bound
-                dbm.set_bound(
-                    0,
-                    0,
-                    Bound {
-                        boundval: num::Bounded::min_value(),
-                        constraint_op: LessThanEqual,
-                    },
-                )?; //We use min_value in place of a negative number, and then it is the user's responsibility to call it with a signed type (or a type where min<zero)
-            } else if and_bound < local_bound {
+            if and_bound < local_bound { // I know the pseudocode says there should be an if block in front of this one, but I checked the UDBM source, and it isn't there, so presumably, it is unnecessary.
                 dbm.set_bound(row_index, col_index, and_bound)?;
                 for i in 0..dbm.get_dimsize() {
                     for j in 0..dbm.get_dimsize() {
@@ -917,8 +907,7 @@ fn test_restrict_with_satisfies() {
 fn test_restrict_lower_bound() {
     let dim: usize = 10;
     let mut dbm: DBM<i8> = DBM::new((1..dim as u8).collect());
-    DBM::and(&mut dbm, 0, 1, LessThanEqual, -10); // This is a lower bound being set at 10, ie. clock 1 must have a greater value than 10
-    panic!(format!("\n{}", dbm));
+    DBM::and(&mut dbm, 0, 1, LessThanEqual, -10).unwrap(); // This is a lower bound being set at 10, ie. clock 1 must have a greater value than 10
     assert_eq!(DBM::satisfied(&dbm, 1, 0, LessThanEqual, 15).unwrap(), true);
     assert_eq!(DBM::satisfied(&dbm, 1, 0, LessThanEqual, 5).unwrap(), false); // 5 is below lower bound, so not satisfied
 }
