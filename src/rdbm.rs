@@ -909,9 +909,18 @@ fn test_restrict_with_satisfies() {
     let dim: usize = 10;
     let mut dbm: DBM<i8> = DBM::new((1..dim as u8).collect());
     DBM::and(&mut dbm, 1, 0, LessThanEqual, 10).unwrap();
-    //panic!(format!("\n{}", dbm));
     assert_eq!(DBM::satisfied(&dbm, 1, 0, LessThanEqual, 15).unwrap(), true);
     assert_eq!(DBM::satisfied(&dbm, 1, 0, LessThanEqual, 5).unwrap(), true);
+}
+
+#[test]
+fn test_restrict_lower_bound() {
+    let dim: usize = 10;
+    let mut dbm: DBM<i8> = DBM::new((1..dim as u8).collect());
+    DBM::and(&mut dbm, 0, 1, LessThanEqual, -10); // This is a lower bound being set at 10, ie. clock 1 must have a greater value than 10
+    panic!(format!("\n{}", dbm));
+    assert_eq!(DBM::satisfied(&dbm, 1, 0, LessThanEqual, 15).unwrap(), true);
+    assert_eq!(DBM::satisfied(&dbm, 1, 0, LessThanEqual, 5).unwrap(), false); // 5 is below lower bound, so not satisfied
 }
 
 #[test]
