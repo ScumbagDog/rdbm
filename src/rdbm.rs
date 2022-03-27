@@ -298,7 +298,8 @@ impl<
         op: ConstraintOp,
         val: T,
     ) -> Result<bool, ()> {
-        //Should be called after close
+        //Should only be called on DBMs that are in their canonical form
+        // Also note that this function just checks if the DBM is still consistent after conjunction of the bound.
         let row_opt = dbm.get_clock_index(row_name);
         let col_opt = dbm.get_clock_index(col_name);
         if row_opt == None || col_opt == None {
@@ -306,13 +307,13 @@ impl<
         } else {
             let row = row_opt.unwrap();
             let col = col_opt.unwrap();
-            let local_bound = dbm.get_bound(row, col).unwrap(); //into usize type, as get_bound doesn't take u8s
+            let local_bound = dbm.get_bound(col, row).unwrap(); //into usize type, as get_bound doesn't take u8s
             let new_bound = Bound {
                 boundval: val,
                 constraint_op: op,
             };
             let zero_bound: Bound<T> = num::Zero::zero();
-            Ok((local_bound + new_bound) < zero_bound)
+            Ok((local_bound + new_bound) > zero_bound)
         }
     }
 
@@ -901,6 +902,16 @@ fn test_restrict_different_order() {
 
     assert_eq!(DBM::is_included_in(&dbm, &dbm_reordered), true); //order of restricts shouldn't matter for equality, dbms should be equal
     assert_eq!(DBM::is_included_in(&dbm_reordered, &dbm), true);
+}
+
+#[test]
+fn test_restrict_with_satisfies() {
+    let dim: usize = 10;
+    let mut dbm: DBM<i8> = DBM::new((1..dim as u8).collect());
+    DBM::and(&mut dbm, 1, 0, LessThanEqual, 10).unwrap();
+    //panic!(format!("\n{}", dbm));
+    assert_eq!(DBM::satisfied(&dbm, 1, 0, LessThanEqual, 15).unwrap(), true);
+    assert_eq!(DBM::satisfied(&dbm, 1, 0, LessThanEqual, 5).unwrap(), true);
 }
 
 #[test]
