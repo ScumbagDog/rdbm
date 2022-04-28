@@ -457,33 +457,32 @@ impl<
     }
 
     pub fn shift(dbm: &mut DBM<T>, clock: usize, delta_val: T) -> Result<(), ()> {
-        if dbm.is_clock_valid(clock) {
+        if !dbm.is_clock_valid(clock) {
             Err(())
         } else {
             let local_bound = Bound {
-                boundval: delta_val,
+                boundval: delta_val.clone(),
+                constraint_op: LessThanEqual,
+            };
+            let local_neg_bound = Bound {
+                boundval: -delta_val,
                 constraint_op: LessThanEqual,
             };
             for i in 0..dbm.get_dimsize() {
                 if i != clock {
-                    dbm.set_bound(
-                        clock,
-                        i,
-                        dbm.get_bound(clock, i).unwrap() + local_bound.clone(),
-                    )
-                    .unwrap();
-                    dbm.set_bound(
-                        i,
-                        clock,
-                        dbm.get_bound(i, clock).unwrap() + local_bound.clone(),
-                    )
-                    .unwrap();
+                    let xi_bound = dbm.get_bound(clock, i).unwrap();
+                    let ix_bound = dbm.get_bound(i, clock).unwrap();
+
+                    dbm.set_bound(clock, i, xi_bound + local_bound.clone())
+                        .unwrap();
+                    dbm.set_bound(i, clock, ix_bound + local_neg_bound.clone())
+                        .unwrap();
                 }
             }
             dbm.set_bound(
                 clock,
                 0,
-                std::cmp::min(num::zero(), dbm.get_bound(clock, 0).unwrap()),
+                std::cmp::max(num::zero(), dbm.get_bound(clock, 0).unwrap()),
             )
             .unwrap();
             dbm.set_bound(
@@ -892,6 +891,37 @@ fn test_restrict_lower_bound() {
     DBM::and(&mut dbm, 0, 1, LessThanEqual, -10).unwrap(); // This is a lower bound being set at 10, ie. clock 1 must have a greater value than 10
     assert_eq!(DBM::satisfied(&dbm, 1, 0, LessThanEqual, 15).unwrap(), true);
     assert_eq!(DBM::satisfied(&dbm, 1, 0, LessThanEqual, 5).unwrap(), false); // 5 is below lower bound, so not satisfied
+}
+
+#[test]
+fn test_shift() {
+    let dim: usize = 10;
+    let mut dbm: DBM<i8> = DBM::new(dim);
+    let mut dbm2: DBM<i8> = DBM::new(dim);
+    DBM::reset(&mut dbm, 1, 10);
+    DBM::reset(&mut dbm2, 1, 10); //at this point the dbms are still comparable
+    DBM::shift(&mut dbm, 1, 1); //but now we shift clock 1 in dbm by 10 points, making neither include the other
+    assert_eq!(DBM::is_included_in(&dbm2, &dbm), false);
+    assert_eq!(DBM::is_included_in(&dbm, &dbm2), false);
+}
+
+#[test]
+fn test_multiple_shift() {
+    let dim: usize = 10;
+    let mut dbm: DBM<i8> = DBM::new(dim);
+    DBM::reset(&mut dbm, 1, 10);
+    let dbm2 = dbm.clone();
+    DBM::shift(&mut dbm, 1, 10);
+    let dbm3 = dbm.clone();
+    DBM::shift(&mut dbm, 1, 10);
+    let dbm4 = dbm.clone();
+    DBM::shift(&mut dbm, 1, 10);
+    assert_eq!(DBM::is_included_in(&dbm, &dbm2), false);
+    assert_eq!(DBM::is_included_in(&dbm, &dbm3), false);
+    assert_eq!(DBM::is_included_in(&dbm, &dbm4), false);
+    assert_eq!(DBM::is_included_in(&dbm2, &dbm), false);
+    assert_eq!(DBM::is_included_in(&dbm2, &dbm3), false);
+    assert_eq!(DBM::is_included_in(&dbm2, &dbm4), false);
 }
 
 #[test]
