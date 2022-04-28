@@ -15,7 +15,7 @@ use std::ops::Add;
 #[derive(Debug, PartialEq, Clone)]
 pub struct DBM<T> {
     matrix: Vec<T>,
-    clock_names: Vec<u8>,
+    dim: usize,
     ops: Bitvector,
 }
 
@@ -150,7 +150,11 @@ impl<T> DBM<T> {
 
     fn get_dimsize(&self) -> usize {
         //only need one function, as the matrices are always quadratic
-        self.clock_names.len()
+        self.dim
+    }
+
+    fn is_clock_valid(&self, clock: usize) -> bool {
+        clock < self.dim
     }
 
     fn get_element(&self, row: usize, col: usize) -> Option<&T> {
@@ -182,10 +186,6 @@ impl<T> DBM<T> {
         self.ops
             .set_bit((row * self.get_dimsize() + col) as u32, val)
     }
-
-    fn get_clock_index(&self, clock: u8) -> Option<usize> {
-        self.clock_names.iter().position(|c| c == &clock)
-    }
 }
 
 impl<
@@ -198,30 +198,28 @@ impl<
             + std::ops::Neg<Output = T>, //For all T's that implement the following traits
     > DBM<T>
 {
-    pub fn zero(mut clocks: Vec<u8>) -> DBM<T> {
+    pub fn zero(dim: usize) -> DBM<T> {
         //Intentionally doesn't take a reference, as we would like the names to be owned by the data structure
-        clocks.insert(0, Zero::zero());
-        let bitvector = Bitvector::init_with_length((clocks.len() * clocks.len()) as u32);
-        let matrix_size = clocks.len() * clocks.len();
+        let matrix_size = dim * dim;
+
+        let bitvector = Bitvector::init_with_length(matrix_size as u32);
         let mut matrix: Vec<T> = Vec::new();
         matrix.resize_with(matrix_size, Zero::zero);
         Self {
             matrix: matrix,
-            clock_names: clocks,
+            dim: dim,
             ops: bitvector,
         }
     }
 
-    pub fn new(mut clocks: Vec<u8>) -> DBM<T> {
-        clocks.insert(0, Zero::zero());
-        let dim = clocks.len();
+    pub fn new(dim: usize) -> DBM<T> {
         let matrix_size = dim * dim;
         let bitvector = Bitvector::init_with_length(matrix_size as u32);
         let mut matrix: Vec<T> = Vec::new();
         matrix.resize_with(matrix_size, Bounded::max_value);
         let mut dbm = Self {
             matrix: matrix,
-            clock_names: clocks,
+            dim: dim,
             ops: bitvector,
         };
         let zero_val = T::zero();
@@ -293,20 +291,17 @@ impl<
 
     pub fn satisfied(
         dbm: &DBM<T>,
-        row_name: u8,
-        col_name: u8,
+        row: usize,
+        col: usize,
         op: ConstraintOp,
         val: T,
     ) -> Result<bool, ()> {
         //Should only be called on DBMs that are in their canonical form
         // Also note that this function just checks if the DBM is still consistent after conjunction of the bound.
-        let row_opt = dbm.get_clock_index(row_name);
-        let col_opt = dbm.get_clock_index(col_name);
-        if row_opt == None || col_opt == None {
+
+        if !dbm.is_clock_valid(row) || !dbm.is_clock_valid(col) {
             Err(())
         } else {
-            let row = row_opt.unwrap();
-            let col = col_opt.unwrap();
             let local_bound = dbm.get_bound(col, row).unwrap(); //into usize type, as get_bound doesn't take u8s
             let new_bound = Bound {
                 boundval: val,
@@ -366,30 +361,26 @@ impl<
         Ok(())
     }
 
-    pub fn free(dbm: &mut DBM<T>, clock_to_free: u8) -> Result<(), ()> {
-        let clock_opt = dbm.get_clock_index(clock_to_free);
-        if clock_opt == None {
+    pub fn free(dbm: &mut DBM<T>, clock_to_free: usize) -> Result<(), ()> {
+        if !dbm.is_clock_valid(clock_to_free) {
             Err(())
         } else {
-            let clock_index = clock_opt.unwrap();
             let inf_bound: Bound<T> = Bound::get_infinite_bound();
             for i in 1..dbm.get_dimsize() {
-                if i != clock_index {
+                if i != clock_to_free {
                     let i0_bound = dbm.get_bound(i, 0).unwrap();
-                    dbm.set_bound(clock_index, i, inf_bound.clone())?;
-                    dbm.set_bound(i, clock_index, i0_bound)?;
+                    dbm.set_bound(clock_to_free, i, inf_bound.clone())?;
+                    dbm.set_bound(i, clock_to_free, i0_bound)?;
                 }
             }
             Ok(())
         }
     }
 
-    pub fn reset(dbm: &mut DBM<T>, clock_to_reset: u8, reset_val: T) -> Result<(), ()> {
-        let clock_opt = dbm.get_clock_index(clock_to_reset);
-        if clock_opt == None {
+    pub fn reset(dbm: &mut DBM<T>, clock_to_reset: usize, reset_val: T) -> Result<(), ()> {
+        if !dbm.is_clock_valid(clock_to_reset) {
             Err(())
         } else {
-            let clock_index = clock_opt.unwrap();
             for i in 0..dbm.get_dimsize() {
                 let zero_i_bound = dbm.get_bound(0, i).unwrap();
                 let i_zero_bound = dbm.get_bound(i, 0).unwrap();
@@ -401,66 +392,59 @@ impl<
                     boundval: -reset_val.clone(),
                     constraint_op: LessThanEqual,
                 };
-                dbm.set_bound(clock_index, i, positive_bound + zero_i_bound)?;
-                dbm.set_bound(i, clock_index, i_zero_bound + negative_bound)?;
+                dbm.set_bound(clock_to_reset, i, positive_bound + zero_i_bound)?;
+                dbm.set_bound(i, clock_to_reset, i_zero_bound + negative_bound)?;
             }
             Ok(())
         }
     }
 
-    pub fn copy(dbm: &mut DBM<T>, clock_target: u8, clock_src: u8) -> Result<(), ()> {
-        let target_opt = dbm.get_clock_index(clock_target);
-        let src_opt = dbm.get_clock_index(clock_src);
-        if target_opt == None || src_opt == None {
+    pub fn copy(dbm: &mut DBM<T>, clock_target: usize, clock_src: usize) -> Result<(), ()> {
+        if !dbm.is_clock_valid(clock_src) || !dbm.is_clock_valid(clock_target) {
             Err(())
         } else {
-            let target_index = target_opt.unwrap();
-            let src_index = src_opt.unwrap();
             for i in 0..dbm.get_dimsize() {
-                if i != target_index {
-                    dbm.set_bound(target_index, i, dbm.get_bound(src_index, i).unwrap())?;
-                    dbm.set_bound(i, target_index, dbm.get_bound(i, src_index).unwrap())?;
+                if i != clock_target {
+                    dbm.set_bound(clock_target, i, dbm.get_bound(clock_src, i).unwrap())?;
+                    dbm.set_bound(i, clock_target, dbm.get_bound(i, clock_src).unwrap())?;
                 }
             }
             let zero_bound: Bound<T> = Bound::zero();
-            dbm.set_bound(src_index, target_index, zero_bound.clone())?;
-            dbm.set_bound(target_index, src_index, zero_bound)?;
+            dbm.set_bound(clock_src, clock_target, zero_bound.clone())?;
+            dbm.set_bound(clock_target, clock_src, zero_bound)?;
             Ok(())
         }
     }
 
     pub fn and(
         dbm: &mut DBM<T>,
-        row_clock: u8,
-        col_clock: u8,
+        row: usize,
+        col: usize,
         op: ConstraintOp,
         constant: T,
     ) -> Result<(), ()> {
         //Constraint is a tuple over T and ConstraintOP, as this mimicks the notation in Timed Automata: Semantics, Algorithms and Tools by Bengtsson and Yi
-        let row_opt = dbm.get_clock_index(row_clock);
-        let col_opt = dbm.get_clock_index(col_clock);
-        if row_opt == None || col_opt == None {
+        if !dbm.is_clock_valid(row) || !dbm.is_clock_valid(col) {
             Err(())
         } else {
-            let row_index = row_opt.unwrap();
-            let col_index = col_opt.unwrap();
-            let local_bound = dbm.get_bound(row_index, col_index).unwrap(); //the bound in (y,x)
+            let local_bound = dbm.get_bound(row, col).unwrap(); //the bound in (y,x)
             let and_bound = Bound {
                 boundval: constant,
                 constraint_op: op,
             };
-            if and_bound < local_bound { // I know the pseudocode says there should be an if block in front of this one, but I checked the UDBM source, and it isn't there, so presumably, it is unnecessary.
-                dbm.set_bound(row_index, col_index, and_bound)?;
+            if and_bound < local_bound {
+                // I know the pseudocode says there should be an if block in front of this one, but I checked the UDBM source, and it isn't there, so presumably, it is unnecessary.
+                dbm.set_bound(row, col, and_bound)?;
                 for i in 0..dbm.get_dimsize() {
                     for j in 0..dbm.get_dimsize() {
-                        let ix_bound = dbm.get_bound(i, row_index).unwrap();
-                        let xj_bound = dbm.get_bound(row_index, j).unwrap();
+                        let ix_bound = dbm.get_bound(i, row).unwrap();
+                        let xj_bound = dbm.get_bound(row, j).unwrap();
                         let ij_bound = dbm.get_bound(i, j).unwrap();
                         if &ix_bound + &xj_bound < ij_bound.clone() {
                             dbm.set_bound(i, j, ix_bound + xj_bound).unwrap();
                         }
-                        let iy_bound = dbm.get_bound(i, col_index).unwrap();
-                        let yj_bound = dbm.get_bound(col_index, j).unwrap();
+                        let iy_bound = dbm.get_bound(i, col).unwrap();
+                        let yj_bound = dbm.get_bound(col, j).unwrap();
                         if &iy_bound + &yj_bound < ij_bound {
                             dbm.set_bound(i, j, iy_bound + yj_bound).unwrap();
                         }
@@ -472,42 +456,40 @@ impl<
         }
     }
 
-    pub fn shift(dbm: &mut DBM<T>, clock: u8, delta_val: T) -> Result<(), ()> {
-        let clock_opt = dbm.get_clock_index(clock);
-        if clock_opt == None {
+    pub fn shift(dbm: &mut DBM<T>, clock: usize, delta_val: T) -> Result<(), ()> {
+        if dbm.is_clock_valid(clock) {
             Err(())
         } else {
-            let clock_index = clock_opt.unwrap();
             let local_bound = Bound {
                 boundval: delta_val,
                 constraint_op: LessThanEqual,
             };
             for i in 0..dbm.get_dimsize() {
-                if i != clock_index {
+                if i != clock {
                     dbm.set_bound(
-                        clock_index,
+                        clock,
                         i,
-                        dbm.get_bound(clock_index, i).unwrap() + local_bound.clone(),
+                        dbm.get_bound(clock, i).unwrap() + local_bound.clone(),
                     )
                     .unwrap();
                     dbm.set_bound(
                         i,
-                        clock_index,
-                        dbm.get_bound(i, clock_index).unwrap() + local_bound.clone(),
+                        clock,
+                        dbm.get_bound(i, clock).unwrap() + local_bound.clone(),
                     )
                     .unwrap();
                 }
             }
             dbm.set_bound(
-                clock_index,
+                clock,
                 0,
-                std::cmp::min(num::zero(), dbm.get_bound(clock_index, 0).unwrap()),
+                std::cmp::min(num::zero(), dbm.get_bound(clock, 0).unwrap()),
             )
             .unwrap();
             dbm.set_bound(
                 0,
-                clock_index,
-                std::cmp::min(num::zero(), dbm.get_bound(0, clock_index).unwrap()),
+                clock,
+                std::cmp::min(num::zero(), dbm.get_bound(0, clock).unwrap()),
             )
             .unwrap();
             Ok(())
@@ -668,32 +650,32 @@ fn bound_reference_add_overflowing() {
 
 #[test]
 fn dbm_index_test1() {
-    let clocks = vec![1, 2, 3, 4];
-    let dbm = DBM::<i32>::zero(clocks);
+    let dim = 4;
+    let dbm = DBM::<i32>::zero(dim);
     let elem = *dbm.get_element(0, 0).unwrap();
     assert_eq!(elem, 0);
 }
 
 #[test]
 fn dbm_index_test2() {
-    let clocks = vec![1, 2, 3, 4];
-    let dbm = DBM::<i32>::zero(clocks);
+    let dim = 4;
+    let dbm = DBM::<i32>::zero(dim);
     let elem = *dbm.get_element(2, 3).unwrap();
     assert_eq!(elem, 0);
 }
 
 #[test]
 fn dbm_index_test3() {
-    let clocks = vec![1, 2, 3, 4];
-    let dbm = DBM::<i32>::zero(clocks);
+    let dim = 4;
+    let dbm = DBM::<i32>::zero(dim);
     let elem = *dbm.get_element(3, 1).unwrap();
     assert_eq!(elem, 0);
 }
 
 #[test]
 fn dbm_bit_consistency_test1() {
-    let clocks = vec![1, 2, 3, 4];
-    let dbm = DBM::<i32>::zero(clocks);
+    let dim = 4;
+    let dbm = DBM::<i32>::zero(dim);
     assert_eq!(
         dbm.get_dimsize() * dbm.get_dimsize(),
         dbm.ops.length as usize
@@ -702,40 +684,40 @@ fn dbm_bit_consistency_test1() {
 
 #[test]
 fn dbm_index_test_bad_index1() {
-    let clocks = vec![1, 2, 3, 4];
-    let dbm = DBM::<i32>::zero(clocks);
+    let dim = 4;
+    let dbm = DBM::<i32>::zero(dim);
     let elem = dbm.get_element(5, 0);
     assert_eq!(elem, None);
 }
 
 #[test]
 fn dbm_index_test_bad_index2() {
-    let clocks = vec![1, 2, 3, 4];
-    let dbm = DBM::<i32>::zero(clocks);
+    let dim = 4;
+    let dbm = DBM::<i32>::zero(dim);
     let elem = dbm.get_element(0, 5);
     assert_eq!(elem, None);
 }
 
 #[test]
 fn dbm_index_test_bad_index3() {
-    let clocks = vec![1, 2, 3, 4];
-    let dbm = DBM::<i32>::zero(clocks);
+    let dim = 4;
+    let dbm = DBM::<i32>::zero(dim);
     let elem = dbm.get_element(5, 5);
     assert_eq!(elem, None);
 }
 
 #[test]
 fn dbm_index_test_empty_dbm() {
-    let clocks = vec![];
-    let dbm = DBM::<i32>::zero(clocks);
-    let elem = *dbm.get_element(0, 0).unwrap();
-    assert_eq!(elem, 0);
+    let dim = 0;
+    let dbm = DBM::<i32>::zero(dim);
+    let elem = dbm.get_element(0, 0);
+    assert_eq!(elem, None);
 }
 
 #[test]
 fn dbm_bound_test1() {
-    let clocks = vec![1, 2, 3, 4];
-    let mut dbm = DBM::<i32>::zero(clocks);
+    let dim = 4;
+    let mut dbm = DBM::<i32>::zero(dim);
     dbm.set_bitval(0, 1, true).unwrap();
     let elem = dbm.matrix.get_mut(1).unwrap();
     *elem = 4;
@@ -751,16 +733,16 @@ fn dbm_bound_test1() {
 
 #[test]
 fn dbm_consistency_test1() {
-    let clocks = vec![1, 2, 3, 4];
-    let mut dbm = DBM::<i32>::zero(clocks);
+    let dim = 4;
+    let mut dbm = DBM::<i32>::zero(dim);
     DBM::close(&mut dbm);
     assert_eq!(DBM::consistent(&dbm), true); //a dbm filled with (0, lte) should be consistent
 }
 
 #[test]
 fn dbm_consistency_test2() {
-    let clocks = vec![1, 2, 3, 4];
-    let mut dbm = DBM::<i32>::zero(clocks);
+    let dim = 4;
+    let mut dbm = DBM::<i32>::zero(dim);
     let val = dbm.matrix.get_mut(1).unwrap(); //get mutable reference to the value in (0, 1)
     *val = 1; //set (0, 1) to be 1
     DBM::close(&mut dbm);
@@ -769,8 +751,8 @@ fn dbm_consistency_test2() {
 
 #[test]
 fn dbm_consistency_test3() {
-    let clocks = vec![1, 2, 3, 4];
-    let mut dbm = DBM::<i32>::zero(clocks);
+    let dim = 4;
+    let mut dbm = DBM::<i32>::zero(dim);
     let dimsize = dbm.get_dimsize();
     let val = dbm.matrix.get_mut(dimsize).unwrap(); //get mutable reference to the value in (1, 0). (we use dimsize to skip the first row)
     *val = 1; //set (1, 0) to be 1, meaning that 0-x <= 1 ~ -x <= 1
@@ -780,8 +762,8 @@ fn dbm_consistency_test3() {
 
 #[test]
 fn dbm_consistency_test4() {
-    let clocks = vec![1, 2, 3, 4];
-    let mut dbm = DBM::<i32>::zero(clocks);
+    let dim = 4;
+    let mut dbm = DBM::<i32>::zero(dim);
     let dimsize = dbm.get_dimsize();
     let val = dbm.matrix.get_mut(dimsize).unwrap(); //get mutable reference to the value in (1, 0). (we use dimsize to skip the first row)
     *val = -1; //set (1, 0) to be -1, meaning that 0-x <= -1 ~ -x <= -1
@@ -791,8 +773,8 @@ fn dbm_consistency_test4() {
 
 #[test]
 fn dbm_consistency_test5() {
-    let clocks = vec![1, 2, 3, 4];
-    let mut dbm = DBM::<i32>::zero(clocks);
+    let dim = 4;
+    let mut dbm = DBM::<i32>::zero(dim);
     let val = dbm.matrix.get_mut(1).unwrap(); //get mutable reference to the value in (0, 1)
     *val = -1;
     DBM::close(&mut dbm);
@@ -801,9 +783,9 @@ fn dbm_consistency_test5() {
 
 #[test]
 fn dbm_inclusion_test1() {
-    let clocks = vec![1, 2, 3, 4];
-    let dbm_le = DBM::<i32>::zero(clocks.to_owned());
-    let mut dbm_gt = DBM::<i32>::zero(clocks);
+    let dim = 4;
+    let dbm_le = DBM::<i32>::zero(dim);
+    let mut dbm_gt = DBM::<i32>::zero(dim);
     let val = dbm_gt.matrix.get_mut(1).unwrap(); //get mutable reference to the value in (0, 1)
     *val = 1; //set (0, 1) to be 1. dbm_gt should now be greater than dbm_le
     assert_eq!(DBM::is_included_in(&dbm_le, &dbm_gt), true);
@@ -812,18 +794,18 @@ fn dbm_inclusion_test1() {
 
 #[test]
 fn dbm_inclusion_test2() {
-    let clocks = vec![1, 2, 3, 4];
-    let dbm_le = DBM::<i32>::zero(clocks.to_owned());
-    let dbm_gte = DBM::<i32>::zero(clocks);
+    let dim = 4;
+    let dbm_le = DBM::<i32>::zero(dim);
+    let dbm_gte = DBM::<i32>::zero(dim);
     assert_eq!(DBM::is_included_in(&dbm_le, &dbm_gte), true); //now they are equal
     assert_eq!(DBM::is_included_in(&dbm_gte, &dbm_le), true); //both checks should run
 }
 
 #[test]
 fn dbm_inclusion_test3() {
-    let clocks = vec![1, 2, 3, 4];
-    let mut dbm_le = DBM::<i32>::zero(clocks.to_owned());
-    let mut dbm_gte = DBM::<i32>::zero(clocks);
+    let dim = 4;
+    let mut dbm_le = DBM::<i32>::zero(dim);
+    let mut dbm_gte = DBM::<i32>::zero(dim);
     let val_gte = dbm_gte.matrix.get_mut(1).unwrap();
     let val_lte = dbm_le.matrix.get_mut(1).unwrap();
     *val_gte = 1;
@@ -834,10 +816,10 @@ fn dbm_inclusion_test3() {
 
 #[test]
 fn dbm_inclusion_test4() {
-    let clocks = vec![1, 2, 3, 4];
-    let smol_clocks = vec![1, 2, 3];
-    let mut dbm_le = DBM::<i32>::zero(smol_clocks);
-    let mut dbm_gte = DBM::<i32>::zero(clocks);
+    let dim = 4;
+    let smol_dim = 3;
+    let mut dbm_le = DBM::<i32>::zero(smol_dim);
+    let mut dbm_gte = DBM::<i32>::zero(dim);
     let val_gte = dbm_gte.matrix.get_mut(1).unwrap();
     let val_lte = dbm_le.matrix.get_mut(1).unwrap();
     *val_gte = 1;
@@ -848,9 +830,9 @@ fn dbm_inclusion_test4() {
 
 #[test]
 fn dbm_inclusion_test5() {
-    let clocks = vec![1, 2, 3, 4];
-    let dbm_le = DBM::<i32>::zero(clocks.to_owned());
-    let mut dbm_gte = DBM::<i32>::zero(clocks);
+    let dim = 4;
+    let dbm_le = DBM::<i32>::zero(dim);
+    let mut dbm_gte = DBM::<i32>::zero(dim);
     dbm_gte.set_bitval(0, 1, true).unwrap();
     assert_eq!(DBM::is_included_in(&dbm_le, &dbm_gte), true); //bound on gte(0, 1) is greater
     assert_eq!(DBM::is_included_in(&dbm_gte, &dbm_le), false); //so le is related to gte, but gte isn't related to le
@@ -858,9 +840,9 @@ fn dbm_inclusion_test5() {
 
 #[test]
 fn test_reset_zero() {
-    let clocks = vec![1, 2, 3, 4];
-    let mut dbm: DBM<i8> = DBM::zero(clocks.to_owned());
-    let dbm2: DBM<i8> = DBM::zero(clocks);
+    let dim = 4;
+    let mut dbm: DBM<i8> = DBM::zero(dim);
+    let dbm2: DBM<i8> = DBM::zero(dim);
     DBM::reset(&mut dbm, 1, 10).unwrap(); //set clock 1 to a value of 10
     assert_eq!(DBM::is_included_in(&dbm2, &dbm), false); //as dbm has clock 1 set to 10, it will not include the zero dbm
     assert_eq!(DBM::is_included_in(&dbm, &dbm2), false); //likewise, the zero dbm does not include dbm
@@ -869,7 +851,7 @@ fn test_reset_zero() {
 #[test]
 fn test_restrict() {
     let dim: usize = 3;
-    let mut dbm: DBM<i8> = DBM::new((1..dim as u8).collect());
+    let mut dbm: DBM<i8> = DBM::new(dim);
     let dbm2 = dbm.clone();
     DBM::and(&mut dbm, 1, 0, LessThanEqual, 10).unwrap();
     assert_eq!(DBM::is_included_in(&dbm, &dbm2), true); //since dbm has been restricted, dbm2 should now include it, but not the other way around.
@@ -879,7 +861,7 @@ fn test_restrict() {
 #[test]
 fn test_restrict_different_order() {
     let dim: usize = 10;
-    let mut dbm: DBM<i8> = DBM::new((1..dim as u8).collect());
+    let mut dbm: DBM<i8> = DBM::new(dim);
     let mut dbm_reordered = dbm.clone();
 
     DBM::and(&mut dbm_reordered, 1, 2, LessThanEqual, 10).unwrap();
@@ -897,7 +879,7 @@ fn test_restrict_different_order() {
 #[test]
 fn test_restrict_with_satisfies() {
     let dim: usize = 10;
-    let mut dbm: DBM<i8> = DBM::new((1..dim as u8).collect());
+    let mut dbm: DBM<i8> = DBM::new(dim);
     DBM::and(&mut dbm, 1, 0, LessThanEqual, 10).unwrap();
     assert_eq!(DBM::satisfied(&dbm, 1, 0, LessThanEqual, 15).unwrap(), true);
     assert_eq!(DBM::satisfied(&dbm, 1, 0, LessThanEqual, 5).unwrap(), true);
@@ -906,7 +888,7 @@ fn test_restrict_with_satisfies() {
 #[test]
 fn test_restrict_lower_bound() {
     let dim: usize = 10;
-    let mut dbm: DBM<i8> = DBM::new((1..dim as u8).collect());
+    let mut dbm: DBM<i8> = DBM::new(dim);
     DBM::and(&mut dbm, 0, 1, LessThanEqual, -10).unwrap(); // This is a lower bound being set at 10, ie. clock 1 must have a greater value than 10
     assert_eq!(DBM::satisfied(&dbm, 1, 0, LessThanEqual, 15).unwrap(), true);
     assert_eq!(DBM::satisfied(&dbm, 1, 0, LessThanEqual, 5).unwrap(), false); // 5 is below lower bound, so not satisfied
@@ -914,7 +896,7 @@ fn test_restrict_lower_bound() {
 
 #[test]
 fn dbm_print_test() {
-    let clocks = vec![1, 2, 3, 4];
+    let dim = 5;
     //lines declared seperately, as it makes it much nicer to look at
     let line1 = "|(0, ≤), (0, ≤), (0, ≤), (0, ≤), (0, ≤)|\n"; //these strings are borrowed (&str)
     let line2 = "|(0, ≤), (0, ≤), (0, ≤), (0, ≤), (0, ≤)|\n";
@@ -922,6 +904,6 @@ fn dbm_print_test() {
     let line4 = "|(0, ≤), (0, ≤), (0, ≤), (0, ≤), (0, ≤)|\n";
     let line5 = "|(0, ≤), (0, ≤), (0, ≤), (0, ≤), (0, ≤)|\n";
     let printed_vec = String::new() + line1 + line2 + line3 + line4 + line5; //so to concatenate, we need an owned string (String) to concat into.
-    let dbm = DBM::<i32>::zero(clocks);
+    let dbm = DBM::<i32>::zero(dim);
     assert_eq!(format!("{}", dbm), printed_vec);
 }
