@@ -479,7 +479,11 @@ impl<
         } else {
             let clock_index = clock_opt.unwrap();
             let local_bound = Bound {
-                boundval: delta_val,
+                boundval: delta_val.clone(),
+                constraint_op: LessThanEqual,
+            };
+            let local_neg_bound = Bound {
+                boundval: -delta_val,
                 constraint_op: LessThanEqual,
             };
             for i in 0..dbm.get_dimsize() {
@@ -493,7 +497,7 @@ impl<
                     dbm.set_bound(
                         i,
                         clock_index,
-                        dbm.get_bound(i, clock_index).unwrap() + local_bound.clone(),
+                        dbm.get_bound(i, clock_index).unwrap() + local_neg_bound.clone(),
                     )
                     .unwrap();
                 }
@@ -501,7 +505,7 @@ impl<
             dbm.set_bound(
                 clock_index,
                 0,
-                std::cmp::min(num::zero(), dbm.get_bound(clock_index, 0).unwrap()),
+                std::cmp::max(num::zero(), dbm.get_bound(clock_index, 0).unwrap()),
             )
             .unwrap();
             dbm.set_bound(
