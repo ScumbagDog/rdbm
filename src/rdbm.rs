@@ -1,11 +1,11 @@
-/*
+ /*
  * This is an implementation of a DBM.
  * The matrix is declared as a single array, as this guarantees a single, coherent block of memory, rather than having all the rows spread around in the heap.
  * As such, it should be indexed with an offset.
  *
  */
 
-use crate::bitvector::Bitvector;
+use bitvec::vec::BitVec;
 use crate::rdbm::ConstraintOp::{LessThan, LessThanEqual};
 use num::Bounded;
 use num::Zero;
@@ -15,8 +15,8 @@ use std::ops::Add;
 #[derive(Debug, PartialEq, Clone)]
 pub struct DBM<T> {
     matrix: Vec<T>,
+    ops: BitVec,
     dim: usize,
-    ops: Bitvector,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Default, Clone)]
@@ -179,12 +179,15 @@ impl<T> DBM<T> {
     }
 
     fn get_bitval(&self, row: usize, col: usize) -> Option<bool> {
-        self.ops.get_bit((row * self.get_dimsize() + col) as u32)
+        match self.ops.get(row * self.get_dimsize() + col) {
+            Some(value) => Some(*value),
+            None => None,
+        }
     }
 
-    fn set_bitval(&mut self, row: usize, col: usize, val: bool) -> Result<(), ()> {
-        self.ops
-            .set_bit((row * self.get_dimsize() + col) as u32, val)
+    fn set_bitval(&mut self, row: usize, col: usize, val: bool) {
+        let dim = self.get_dimsize();
+        self.ops.set(row * dim + col, val)
     }
 }
 
@@ -201,26 +204,31 @@ impl<
     pub fn zero(dim: usize) -> DBM<T> {
         //Intentionally doesn't take a reference, as we would like the names to be owned by the data structure
         let matrix_size = dim * dim;
-
-        let bitvector = Bitvector::init_with_length(matrix_size as u32);
+        let mut bitvector = BitVec::with_capacity(matrix_size);
+        for i in 0..matrix_size {
+            bitvector.push(false);
+        }
         let mut matrix: Vec<T> = Vec::new();
         matrix.resize_with(matrix_size, Zero::zero);
         Self {
             matrix: matrix,
-            dim: dim,
             ops: bitvector,
+            dim: dim,
         }
     }
 
     pub fn new(dim: usize) -> DBM<T> {
         let matrix_size = dim * dim;
-        let bitvector = Bitvector::init_with_length(matrix_size as u32);
+        let mut bitvector = BitVec::with_capacity(matrix_size);
         let mut matrix: Vec<T> = Vec::new();
         matrix.resize_with(matrix_size, Bounded::max_value);
+        for i in 0..matrix_size {
+            bitvector.push(false);
+        }
         let mut dbm = Self {
             matrix: matrix,
-            dim: dim,
             ops: bitvector,
+            dim: dim,
         };
         let zero_val = T::zero();
         for i in 0..dim {
@@ -247,24 +255,23 @@ impl<
     }
 
     fn set_bound(&mut self, row: usize, col: usize, bound: Bound<T>) -> Result<(), ()> {
-        let set_element_status = self.set_element(row, col, bound.boundval);
-        let set_bit_status = self.set_bitval(row, col, bound.constraint_op.into());
-        match set_element_status {
-            Ok(_) => match set_bit_status {
-                Ok(_) => Ok(()),
-                Err(_) => Err(()),
-            },
-            Err(_) => Err(()),
+        match (row, col) {
+            (row, col) if row < self.get_dimsize() && col < self.get_dimsize() => {
+                self.set_element(row, col, bound.boundval);
+                self.set_bitval(row, col, bound.constraint_op.into());
+                Ok(())
+            }
+            _ => Err(())
         }
     }
 
     fn get_bound_iter(&self) -> impl Iterator<Item = Bound<&T>> + '_ {
         //This function looks deceptively simple. It is an absolute mess behind the scenes.
         let matrix_iter = self.matrix.iter(); //If you ever decide to refactor it, prepare yourself for generic
-        let bitvec_iter = self.ops.get_iterator();
+        let bitvec_iter = self.ops.iter();
         matrix_iter.zip(bitvec_iter).map(|(val, bitval)| Bound {
             boundval: val,
-            constraint_op: ConstraintOp::from(bitval),
+            constraint_op: ConstraintOp::from(*bitval),
         })
     }
 
@@ -520,8 +527,7 @@ impl<
 
 impl<T: fmt::Display> fmt::Display for DBM<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
-        let bitstring = self.ops.get_bits_as_vec();
-        let mut bitstring_chunks = bitstring.chunks(self.get_dimsize());
+        let mut bitstring_chunks = self.ops.chunks(self.get_dimsize());
         for r in self.matrix.chunks(self.get_dimsize()) {
             let mut bit_r = bitstring_chunks.next().unwrap().iter();
             write!(f, "|").unwrap();
@@ -677,7 +683,7 @@ fn dbm_bit_consistency_test1() {
     let dbm = DBM::<i32>::zero(dim);
     assert_eq!(
         dbm.get_dimsize() * dbm.get_dimsize(),
-        dbm.ops.length as usize
+        dbm.ops.len()
     );
 }
 
@@ -717,7 +723,7 @@ fn dbm_index_test_empty_dbm() {
 fn dbm_bound_test1() {
     let dim = 4;
     let mut dbm = DBM::<i32>::zero(dim);
-    dbm.set_bitval(0, 1, true).unwrap();
+    dbm.set_bitval(0, 1, true);
     let elem = dbm.matrix.get_mut(1).unwrap();
     *elem = 4;
     let bound = dbm.get_bound(0, 1);
@@ -832,7 +838,7 @@ fn dbm_inclusion_test5() {
     let dim = 4;
     let dbm_le = DBM::<i32>::zero(dim);
     let mut dbm_gte = DBM::<i32>::zero(dim);
-    dbm_gte.set_bitval(0, 1, true).unwrap();
+    dbm_gte.set_bitval(0, 1, true);
     assert_eq!(DBM::is_included_in(&dbm_le, &dbm_gte), true); //bound on gte(0, 1) is greater
     assert_eq!(DBM::is_included_in(&dbm_gte, &dbm_le), false); //so le is related to gte, but gte isn't related to le
 }
