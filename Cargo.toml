@@ -6,7 +6,6 @@ edition = "2018"
 
 [dependencies]
 num = "0.4"
-bitvec = "1.0.0"
 
 [lib]
 name = "rdbm"
